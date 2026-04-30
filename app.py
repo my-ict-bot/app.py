@@ -3,35 +3,40 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# የዌብሳይቱ ገጽታ
+# 1. የዌብሳይቱ ገጽታ
 st.set_page_config(page_title="Pro Smart Money AI", layout="wide")
 st.title("Central Bank Price Action Analysis (AI Predictor)")
 
-# 1. Asset መምረጫ (Gold, Forex, Crypto ተጨምሯል)
+# 2. Asset መምረጫ (Gold, Forex, Crypto, Indices)
 assets = ["GC=F", "EURUSD=X", "GBPUSD=X", "BTC-USD", "ETH-USD", "SI=F", "CL=F", "^GSPC"]
 ticker = st.sidebar.selectbox("የሚከታተሉት Asset ይምረጡ", assets)
 timeframe = st.sidebar.selectbox("Timeframe", ["15m", "30m", "1h", "4h", "1d"])
 
-# 2. ዳታ ማውረድ
+# 3. ዳታ ማውረድ
 data = yf.download(ticker, period="5d", interval=timeframe)
 
 if data.empty:
     st.error("ዳታ ማግኘት አልተቻለም። እባክህ ገበያው ክፍት መሆኑን አረጋግጥ።")
     st.stop()
 
-# 3. Smart Money Indicators (PDH, PDL, FVG, OB)
+# 4. Smart Money Indicators (PDH, PDL, FVG)
 data['PDH'] = data['High'].shift(1).rolling(window=24).max()
 data['PDL'] = data['Low'].shift(1).rolling(window=24).min()
 
-# FVG (Fair Value Gap)
+# FVG (Fair Value Gap) ስሌት
 data['FVG_Up'] = (data['Low'] > data['High'].shift(2))
 data['FVG_Down'] = (data['High'] < data['Low'].shift(2))
 
-# 4. መረጃዎችን ወደ ነጠላ ቁጥር መቀየር (ስህተትን ለመከላከል)
+# 5. መረጃዎችን ወደ ነጠላ ቁጥር መቀየር (ስህተትን ለመከላከል)
 def safe_float(val):
     try:
         return float(val.iloc[-1]) if hasattr(val, 'iloc') else float(val)
     except: return 0.0
+
+def safe_bool(val):
+    try:
+        return bool(val.iloc[-1]) if hasattr(val, 'iloc') else bool(val)
+    except: return False
 
 last_row = data.iloc[-1]
 prev_row = data.iloc[-2]
@@ -41,32 +46,31 @@ pdl_val = safe_float(last_row['PDL'])
 pdh_val = safe_float(last_row['PDH'])
 p_low = safe_float(prev_row['Low'])
 p_high = safe_float(prev_row['High'])
-# መስመር 44 እና 45 ላይ ያሉትን በዚህ ተካቸው
-fvg_up = bool(last_row['FVG_Up'].any()) if hasattr(last_row['FVG_Up'], 'any') else bool(last_row['FVG_Up'])
-fvg_down = bool(last_row['FVG_Down'].any()) if hasattr(last_row['FVG_Down'], 'any') else bool(last_row['FVG_Down'])
+fvg_up = safe_bool(data['FVG_Up'])
+fvg_down = safe_bool(data['FVG_Down'])
 
-# 5. AI Signal & Prediction Logic
-status = "🔎 ገበያው ትክክለኛውን ዞን እየጠበቀ ነው..."
+# 6. AI Signal & Prediction Logic
+status = "🔎 ገበያው ትክክለኛውን የ Manipulation ዞን እየጠበቀ ነው..."
 signal_color = "white"
 entry, sl, tp = 0, 0, 0
 
-# BUY Logic: Liquidity Sweep + FVG Confirmation
+# BUY Logic: Liquidity Sweep (ከ PDL በታች) + FVG Confirmation
 if c_price > pdl_val and p_low < pdl_val and fvg_up:
-    status = "🔥 PRO BUY SIGNAL (Manipulation Detected)"
+    status = "🔥 PRO BUY SIGNAL (Liquidity Swept + FVG)"
     signal_color = "green"
     entry = round(c_price, 5)
     sl = round(pdl_val - (pdl_val * 0.001), 5)
     tp = round(entry + (entry - sl) * 3, 5)
 
-# SELL Logic: Liquidity Sweep + FVG Confirmation
+# SELL Logic: Liquidity Sweep (ከ PDH በላይ) + FVG Confirmation
 elif c_price < pdh_val and p_high > pdh_val and fvg_down:
-    status = "⚠️ PRO SELL SIGNAL (Manipulation Detected)"
+    status = "⚠️ PRO SELL SIGNAL (Liquidity Swept + FVG)"
     signal_color = "red"
     entry = round(c_price, 5)
     sl = round(pdh_val + (pdh_val * 0.001), 5)
     tp = round(entry - (sl - entry) * 3, 5)
 
-# 6. ውጤቱን ማሳየት
+# 7. ውጤቱን ማሳየት
 col1, col2 = st.columns(2)
 with col1:
     st.metric(f"ወቅታዊ የ {ticker} ዋጋ", f"{c_price:.5f}")
@@ -76,10 +80,10 @@ with col2:
 if entry != 0:
     st.balloons()
     st.success(f"🎯 **TARGET FOUND!** \n\n **Entry:** {entry} | **SL:** {sl} | **TP:** {tp}")
-    # የድምፅ ማስጠንቀቂያ
+    # የድምፅ ማስጠንቀቂያ (Alert)
     st.components.v1.html('<audio autoplay><source src="https://www.soundjay.com/buttons/beep-01a.mp3"></audio>', height=0)
 
-# 7. የዋጋ ሰንጠረዥ
+# 8. የዋጋ ሰንጠረዥ
 st.write("#### የቅርብ ጊዜ የዋጋ እንቅስቃሴዎች")
 st.dataframe(data.tail(10))
 
