@@ -100,7 +100,23 @@ if close_price > pdl_level and prev_low < pdl_level:
     signal_color = "green"
 
 # Bearish Setup: ዋጋ ከPDH በላይ ወጥቶ ከተመለሰ (Manipulation)
-elif last_row['Close'] < last_row['PDH'] and prev_row['High'] > last_row['PDH']:
+# መረጃዎቹን ቀድመህ ወደ ነጠላ ቁጥር ቀይራቸው (ይህ ስህተቱን ያስቀረዋል)
+c_price = float(last_row['Close'])
+pdl_val = float(last_row['PDL'])
+pdh_val = float(last_row['PDH'])
+p_low = float(prev_row['Low'])
+p_high = float(prev_row['High'])
+
+# አሁን ንፅፅሩን አከናውን
+if c_price > pdl_val and p_low < pdl_val:
+    status = "Buy Signal (Liquidity Swept)"
+    signal_color = "green"
+elif c_price < pdh_val and p_high > pdh_val:
+    status = "Sell Signal (Liquidity Swept)"
+    signal_color = "red"
+else:
+    status = "No Clear Signal"
+    signal_color = "white"
     status = "SELL SIGNAL (Bearish Reversal)"
     entry = round(last_row['Close'], 5)
     sl = round(last_row['PDH'] + (last_row['PDH'] * 0.001), 5)
