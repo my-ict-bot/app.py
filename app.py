@@ -82,6 +82,11 @@ def safe_float(value):
 # 1. FVG (Fair Value Gap) ስሌት
 # FVG Up (Bullish): የ 1ኛው ሻማ High ከ 3ኛው ሻማ Low በታች ሲሆን
 data['FVG_Up'] = (data['Low'] > data['High'].shift(2))
+# --- መስመር 85 አካባቢ የሚጨመር የ FVG እና OB ስሌት ---
+
+# 1. FVG (Fair Value Gap) ስሌት
+# FVG Up (Bullish): የ 1ኛው ሻማ High ከ 3ኛው ሻማ Low በታች ሲሆን
+data['FVG_Up'] = (data['Low'] > data['High'].shift(2))
 # FVG Down (Bearish): የ 1ኛው ሻማ Low ከ 3ኛው ሻማ High በላይ ሲሆን
 data['FVG_Down'] = (data['High'] < data['Low'].shift(2))
 
@@ -97,26 +102,6 @@ is_bearish_ob = (data['Close'].shift(1) > data['Open'].shift(1)) and (data['Clos
 
 last_ob_bull = is_bullish_ob.iloc[-1]
 last_ob_bear = is_bearish_ob.iloc[-1]
-        if hasattr(value, 'iloc'):
-            return float(value.iloc[0])
-        return float(value)
-    except:
-        return 0.0
-
-# ሁሉንም ዋጋዎች በዚህ ፋንክሽን አማካኝነት ቀይራቸው
-close_price = safe_float(last_row['Close'])
-pdl_level = safe_float(last_row['PDL'])
-pdh_level = safe_float(last_row['PDH'])
-prev_low = safe_float(prev_row['Low'])
-prev_high = safe_float(prev_row['High'])
-
-if close_price > pdl_level and prev_low < pdl_level:
-    status = "Buy Signal"
-    signal_color = "green"
-    status = "BUY SIGNAL (Bullish Reversal)"
-    entry = round(last_row['Close'], 5)
-    sl = round(last_row['PDL'] - (last_row['PDL'] * 0.001), 5)
-    tp = round(entry + (entry - sl) * 2, 5) # 1:2 Risk-Reward
 # 1. ዳታውን ወደ ነጠላ ቁጥር መቀየር
 def to_single_float(val):
     try:
