@@ -48,7 +48,14 @@ tp = 0
 signal_color = "white"
 
 # Bullish Setup: ዋጋ ከPDL በታች ወርዶ ከተመለሰ (Liquidity Raid)
-if last_row['Close'] > last_row['PDL'] and prev_row['Low'] < last_row['PDL']:
+# መረጃዎቹን ወደ ነጠላ ቁጥር (float) በመቀየር ማወዳደር
+close_price = float(last_row['Close'])
+pdl_level = float(last_row['PDL'])
+prev_low = float(prev_row['Low'])
+
+if close_price > pdl_level and prev_low < pdl_level:
+    status = "Buy Signal"
+    signal_color = "green"
     status = "BUY SIGNAL (Bullish Reversal)"
     entry = round(last_row['Close'], 5)
     sl = round(last_row['PDL'] - (last_row['PDL'] * 0.001), 5)
