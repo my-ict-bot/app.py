@@ -77,6 +77,26 @@ prev_high = safe_float(prev_row['High'])
 # መረጃው በምን አይነት መልኩ ቢመጣ በትክክል እንዲነበብ የሚያደርግ ፋንክሽን
 def safe_float(value):
     try:
+ # --- መስመር 85 አካባቢ የሚጨመር የ FVG እና OB ስሌት ---
+
+# 1. FVG (Fair Value Gap) ስሌት
+# FVG Up (Bullish): የ 1ኛው ሻማ High ከ 3ኛው ሻማ Low በታች ሲሆን
+data['FVG_Up'] = (data['Low'] > data['High'].shift(2))
+# FVG Down (Bearish): የ 1ኛው ሻማ Low ከ 3ኛው ሻማ High በላይ ሲሆን
+data['FVG_Down'] = (data['High'] < data['Low'].shift(2))
+
+# የቅርብ ጊዜውን የ FVG ሁኔታ ማወቅ
+last_fvg_up = data['FVG_Up'].iloc[-1]
+last_fvg_down = data['FVG_Down'].iloc[-1]
+
+# 2. Order Block (OB) መኖሩን ማረጋገጫ (ቀላል ዘዴ)
+# Bullish OB: የቀድሞው ሻማ ቀይ ሆኖ አሁኑ ሻማ ከሱ በላይ ሲዘጋ
+is_bullish_ob = (data['Close'].shift(1) < data['Open'].shift(1)) and (data['Close'] > data['High'].shift(1))
+# Bearish OB: የቀድሞው ሻማ አረንጓዴ ሆኖ አሁኑ ሻማ ከሱ በታች ሲዘጋ
+is_bearish_ob = (data['Close'].shift(1) > data['Open'].shift(1)) and (data['Close'] < data['Low'].shift(1))
+
+last_ob_bull = is_bullish_ob.iloc[-1]
+last_ob_bear = is_bearish_ob.iloc[-1]
         if hasattr(value, 'iloc'):
             return float(value.iloc[0])
         return float(value)
@@ -97,62 +117,67 @@ if close_price > pdl_level and prev_low < pdl_level:
     entry = round(last_row['Close'], 5)
     sl = round(last_row['PDL'] - (last_row['PDL'] * 0.001), 5)
     tp = round(entry + (entry - sl) * 2, 5) # 1:2 Risk-Reward
-# --- ይህ ክፍል ከመስመር 100 ጀምሮ እስከ ፋይሉ መጨረሻ ድረስ ያለውን ይተካል ---
-
-# 1. መረጃው ዝርዝርም ይሁን ነጠላ ቁጥር በትክክል እንዲነበብ የሚያደርግ ዘዴ
+# 1. ዳታውን ወደ ነጠላ ቁጥር መቀየር
 def to_single_float(val):
     try:
-        if hasattr(val, 'iloc'):
-            return float(val.iloc[0])
-        return float(val)
-    except:
-        return 0.0
+        return float(val.iloc[0]) if hasattr(val, 'iloc') else float(val)
+    except: return 0.0
 
-# 2. ተለዋዋጮቹን ወደ ነጠላ ቁጥር (float) መቀየር
 c_price = to_single_float(last_row['Close'])
 pdl_val = to_single_float(last_row['PDL'])
 pdh_val = to_single_float(last_row['PDH'])
 p_low = to_single_float(prev_row['Low'])
 p_high = to_single_float(prev_row['High'])
 
-# 3. መጀመሪያ Entry, SL እና TP ወደ ዜሮ መመለስ (ስህተት እንዳይመጣ)
 entry, sl, tp = 0, 0, 0
+status = "No Clear Signal"
+signal_color = "white"
 
-# 4. የሲግናል ንፅፅር እና ስሌት
-if c_price > pdl_val and p_low < pdl_val:
-    status = "BUY SIGNAL (Liquidity Swept)"
+# 2. Entry Logic (Liquidity Swept + FVG/OB confirmation)
+# BUY: ዋጋ ከ PDL በታች ወርዶ ሲመለስ + FVG ካለ
+if c_price > pdl_val and p_low < pdl_val and last_fvg_up:
+    status = "PRO BUY SIGNAL (OB + FVG Confirmed)"
     signal_color = "green"
     entry = round(c_price, 5)
-    sl = round(pdl_val - (pdl_val * 0.001), 5)
-    tp = round(entry + (entry - sl) * 2, 5)
+    sl = round(pdl_val - (pdl_val * 0.0005), 5)
+    tp = round(entry + (entry - sl) * 3, 5) # 1:3 Risk/Reward
 
-elif c_price < pdh_val and p_high > pdh_val:
-    status = "SELL SIGNAL (Liquidity Swept)"
+# SELL: ዋጋ ከ PDH በላይ ወጥቶ ሲመለስ + FVG ካለ
+elif c_price < pdh_val and p_high > pdh_val and last_fvg_down:
+    status = "PRO SELL SIGNAL (OB + FVG Confirmed)"
     signal_color = "red"
     entry = round(c_price, 5)
-    sl = round(pdh_val + (pdh_val * 0.001), 5)
-    tp = round(entry - (sl - entry) * 2, 5)
+    sl = round(pdh_val + (pdh_val * 0.0005), 5)
+    tp = round(entry - (sl - entry) * 3, 5)
 
-else:
-    status = "No Clear Signal"
-    signal_color = "white"
+# 3. የድምፅ ማስጠንቀቂያ (Alert)
+if entry != 0:
+    st.balloons() # የእንኳን ደስ አለህ ምልክት
+    # ለድምፅ ማስጠንቀቂያ (ይህ በብሮውዘሩ ላይ ድምፅ ያሰማል)
+    st.components.v1.html("""
+        <audio autoplay>
+            <source src="https://www.soundjay.com/buttons/beep-01a.mp3" type="audio/mpeg">
+        </audio>
+    """, height=0)
 
-# 5. መረጃውን በዌብሳይቱ ላይ ማሳየት
+# 4. መረጃውን በዌብሳይቱ ላይ ማሳየት
 col1, col2 = st.columns(2)
 with col1:
     st.metric("አሁኑ ዋጋ", f"{c_price:.5f}")
 with col2:
-    st.markdown(f"**ሁኔታ:** <span style='color:{signal_color}'>{status}</span>", unsafe_allow_html=True)
+    st.markdown(f"### **ሁኔታ:** <span style='color:{signal_color}'>{status}</span>", unsafe_allow_html=True)
 
-# 6. የሲግናል ዝርዝር መረጃ (ካለ ብቻ ማሳየት)
 if entry != 0:
-    st.success(f"✅ ተገኝቷል! Entry: {entry} | SL: {sl} | TP: {tp}")
+    st.markdown(f"""
+    <div style="background-color:#1e1e1e; padding:20px; border-radius:10px; border: 2px solid {signal_color};">
+        <h2 style="color:{signal_color}; text-align:center;">🎯 ትክክለኛ Entry ተገኝቷል!</h2>
+        <p style="font-size:20px; text-align:center;">
+            <b>ENTRY:</b> {entry} | <b>SL:</b> {sl} | <b>TP:</b> {tp}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 else:
-    st.info("ገበያው ትክክለኛውን የ Manipulation ዞን እየጠበቀ ነው...")
+    st.info("🔎 ገበያው ትክክለኛውን የ Manipulation ዞን (OB/FVG) እየጠበቀ ነው...")
 
-# 7. ዳታውን በሰንጠረዥ ማሳየት
 st.write("#### የቅርብ ጊዜ የዋጋ እንቅስቃሴዎች")
 st.dataframe(data.tail(10))
-
-st.markdown("---")
-st.write("💡 **ማሳሰቢያ:** ይህ አልጎሪዝም 'Central Bank' ገበያውን manipulate የሚያደርጉባቸውን ዞኖች ለመለየት ታስቦ የተሰራ ነው።")
