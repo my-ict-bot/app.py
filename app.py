@@ -49,7 +49,10 @@ signal_color = "white"
 
 # Bullish Setup: ዋጋ ከPDL በታች ወርዶ ከተመለሰ (Liquidity Raid)
 # መረጃዎቹን ወደ ነጠላ ቁጥር (float) በመቀየር ማወዳደር
-close_price = float(last_row['Close'])
+# መረጃው ዝርዝር ቢሆን እንኳ የመጀመሪያውን ነጠላ ቁጥር ብቻ እንዲወስድ ማድረግ
+close_price = float(last_row['Close'].iloc[0] if hasattr(last_row['Close'], 'iloc') else last_row['Close'])
+pdl_level = float(last_row['PDL'].iloc[0] if hasattr(last_row['PDL'], 'iloc') else last_row['PDL'])
+prev_low = float(prev_row['Low'].iloc[0] if hasattr(prev_row['Low'], 'iloc') else prev_row['Low'])
 pdl_level = float(last_row['PDL'])
 prev_low = float(prev_row['Low'])
 
