@@ -62,7 +62,18 @@ except Exception as e:
 close_price = float(last_row['Close'].iloc[0] if hasattr(last_row['Close'], 'iloc') else last_row['Close'])
 pdl_level = float(last_row['PDL'].iloc[0] if hasattr(last_row['PDL'], 'iloc') else last_row['PDL'])
 prev_low = float(prev_row['Low'].iloc[0] if hasattr(prev_row['Low'], 'iloc') else prev_row['Low'])
-pdl_level = float(last_row['PDL'])
+# መረጃው በምን አይነት መልኩ ቢመጣ (ነጠላ ቁጥርም ይሁን ዝርዝር) በትክክል እንዲነበብ ማድረግ
+def safe_float(value):
+    if hasattr(value, 'iloc'):
+        return float(value.iloc[0])
+    return float(value)
+
+# አሁን ተለዋዋጮቹን በዚህ መልኩ ጥራ
+close_price = safe_float(last_row['Close'])
+pdl_level = safe_float(last_row['PDL'])
+pdh_level = safe_float(last_row['PDH'])
+prev_low = safe_float(prev_row['Low'])
+prev_high = safe_float(prev_row['High'])
 prev_low = float(prev_row['Low'])
 
 if close_price > pdl_level and prev_low < pdl_level:
