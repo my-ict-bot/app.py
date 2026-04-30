@@ -74,7 +74,21 @@ pdl_level = safe_float(last_row['PDL'])
 pdh_level = safe_float(last_row['PDH'])
 prev_low = safe_float(prev_row['Low'])
 prev_high = safe_float(prev_row['High'])
-prev_low = float(prev_row['Low'])
+# መረጃው በምን አይነት መልኩ ቢመጣ በትክክል እንዲነበብ የሚያደርግ ፋንክሽን
+def safe_float(value):
+    try:
+        if hasattr(value, 'iloc'):
+            return float(value.iloc[0])
+        return float(value)
+    except:
+        return 0.0
+
+# ሁሉንም ዋጋዎች በዚህ ፋንክሽን አማካኝነት ቀይራቸው
+close_price = safe_float(last_row['Close'])
+pdl_level = safe_float(last_row['PDL'])
+pdh_level = safe_float(last_row['PDH'])
+prev_low = safe_float(prev_row['Low'])
+prev_high = safe_float(prev_row['High'])
 
 if close_price > pdl_level and prev_low < pdl_level:
     status = "Buy Signal"
