@@ -41,8 +41,9 @@ pdl_val = safe_float(last_row['PDL'])
 pdh_val = safe_float(last_row['PDH'])
 p_low = safe_float(prev_row['Low'])
 p_high = safe_float(prev_row['High'])
-fvg_up = bool(last_row['FVG_Up'])
-fvg_down = bool(last_row['FVG_Down'])
+# መስመር 44 እና 45 ላይ ያሉትን በዚህ ተካቸው
+fvg_up = bool(last_row['FVG_Up'].any()) if hasattr(last_row['FVG_Up'], 'any') else bool(last_row['FVG_Up'])
+fvg_down = bool(last_row['FVG_Down'].any()) if hasattr(last_row['FVG_Down'], 'any') else bool(last_row['FVG_Down'])
 
 # 5. AI Signal & Prediction Logic
 status = "🔎 ገበያው ትክክለኛውን ዞን እየጠበቀ ነው..."
