@@ -101,7 +101,33 @@ if close_price > pdl_level and prev_low < pdl_level:
 
 # Bearish Setup: ዋጋ ከPDH በላይ ወጥቶ ከተመለሰ (Manipulation)
 # መረጃዎቹን ቀድመህ ወደ ነጠላ ቁጥር ቀይራቸው (ይህ ስህተቱን ያስቀረዋል)
-c_price = float(last_row['Close'])
+# መረጃው ዝርዝርም ይሁን ነጠላ ቁጥር በትክክል እንዲነበብ የሚያደርግ ዘዴ
+def to_single_float(val):
+    try:
+        # መረጃው ዝርዝር (Series) ከሆነ የመጀመሪያውን ቁጥር ይወስዳል
+        if hasattr(val, 'iloc'):
+            return float(val.iloc[0])
+        return float(val)
+    except:
+        return 0.0
+
+# አሁን ተለዋዋጮቹን በዚህ መልኩ በሰላም ቀይራቸው
+c_price = to_single_float(last_row['Close'])
+pdl_val = to_single_float(last_row['PDL'])
+pdh_val = to_single_float(last_row['PDH'])
+p_low = to_single_float(prev_row['Low'])
+p_high = to_single_float(prev_row['High'])
+
+# የሲግናል ንፅፅሩን ቀጥል
+if c_price > pdl_val and p_low < pdl_val:
+    status = "Buy Signal (Liquidity Swept)"
+    signal_color = "green"
+elif c_price < pdh_val and p_high > pdh_val:
+    status = "Sell Signal (Liquidity Swept)"
+    signal_color = "red"
+else:
+    status = "No Clear Signal"
+    signal_color = "white"
 pdl_val = float(last_row['PDL'])
 pdh_val = float(last_row['PDH'])
 p_low = float(prev_row['Low'])
