@@ -76,13 +76,22 @@ prev_low = safe_float(prev_row['Low'])
 prev_high = safe_float(prev_row['High'])
 # መረጃው በምን አይነት መልኩ ቢመጣ በትክክል እንዲነበብ የሚያደርግ ፋንክሽን
 def safe_float(value):
-    try:
- # --- መስመር 85 አካባቢ የሚጨመር የ FVG እና OB ስሌት ---
+# --- ከመስመር 79 ጀምሮ ያለውን ኮድ በዚህ ተካው ---
 
 # 1. FVG (Fair Value Gap) ስሌት
-# FVG Up (Bullish): የ 1ኛው ሻማ High ከ 3ኛው ሻማ Low በታች ሲሆን
 data['FVG_Up'] = (data['Low'] > data['High'].shift(2))
-# --- መስመር 85 አካባቢ የሚጨመር የ FVG እና OB ስሌት ---
+data['FVG_Down'] = (data['High'] < data['Low'].shift(2))
+
+# 2. የቅርብ ጊዜውን የ FVG ሁኔታ ማወቅ
+last_fvg_up = data['FVG_Up'].iloc[-1]
+last_fvg_down = data['FVG_Down'].iloc[-1]
+
+# 3. Order Block (OB) ማረጋገጫ
+is_bullish_ob = (data['Close'].shift(1) < data['Open'].shift(1)) and (data['Close'] > data['High'].shift(1))
+is_bearish_ob = (data['Close'].shift(1) > data['Open'].shift(1)) and (data['Close'] < data['Low'].shift(1))
+
+last_ob_bull = is_bullish_ob.iloc[-1]
+last_ob_bear = is_bearish_ob.iloc[-1]
 
 # 1. FVG (Fair Value Gap) ስሌት
 # FVG Up (Bullish): የ 1ኛው ሻማ High ከ 3ኛው ሻማ Low በታች ሲሆን
