@@ -63,7 +63,7 @@ elif last_row['Close'] < last_row['PDH'] and prev_row['High'] > last_row['PDH']:
 with col1:
     st.metric("አሁኑ ዋጋ", f"{last_row['Close']:.5f}")
 with col2:
-    st.markdown(f"**ሁኔታ:** <span style='color:{signal\_color}'>{status}</span>", unsafe_allow_html=True)
+    st.markdown(f"**ሁኔታ:** <span style='color:{signal_color}'>{status}</span>", unsafe_allow_html=True)
 
 if entry != 0:
     st.success(f"✅ ተገኝቷል! Entry: {entry} | SL: {sl} | TP: {tp}")
