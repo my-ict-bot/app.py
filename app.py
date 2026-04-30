@@ -97,72 +97,62 @@ if close_price > pdl_level and prev_low < pdl_level:
     entry = round(last_row['Close'], 5)
     sl = round(last_row['PDL'] - (last_row['PDL'] * 0.001), 5)
     tp = round(entry + (entry - sl) * 2, 5) # 1:2 Risk-Reward
-    signal_color = "green"
+# --- ይህ ክፍል ከመስመር 100 ጀምሮ እስከ ፋይሉ መጨረሻ ድረስ ያለውን ይተካል ---
 
-# Bearish Setup: ዋጋ ከPDH በላይ ወጥቶ ከተመለሰ (Manipulation)
-# መረጃዎቹን ቀድመህ ወደ ነጠላ ቁጥር ቀይራቸው (ይህ ስህተቱን ያስቀረዋል)
-# መረጃው ዝርዝርም ይሁን ነጠላ ቁጥር በትክክል እንዲነበብ የሚያደርግ ዘዴ
+# 1. መረጃው ዝርዝርም ይሁን ነጠላ ቁጥር በትክክል እንዲነበብ የሚያደርግ ዘዴ
 def to_single_float(val):
     try:
-        # መረጃው ዝርዝር (Series) ከሆነ የመጀመሪያውን ቁጥር ይወስዳል
         if hasattr(val, 'iloc'):
             return float(val.iloc[0])
         return float(val)
     except:
         return 0.0
 
-# አሁን ተለዋዋጮቹን በዚህ መልኩ በሰላም ቀይራቸው
+# 2. ተለዋዋጮቹን ወደ ነጠላ ቁጥር (float) መቀየር
 c_price = to_single_float(last_row['Close'])
 pdl_val = to_single_float(last_row['PDL'])
 pdh_val = to_single_float(last_row['PDH'])
 p_low = to_single_float(prev_row['Low'])
 p_high = to_single_float(prev_row['High'])
 
-# የሲግናል ንፅፅሩን ቀጥል
-if c_price > pdl_val and p_low < pdl_val:
-    status = "Buy Signal (Liquidity Swept)"
-    signal_color = "green"
-elif c_price < pdh_val and p_high > pdh_val:
-    status = "Sell Signal (Liquidity Swept)"
-    signal_color = "red"
-else:
-    status = "No Clear Signal"
-    signal_color = "white"
-pdl_val = float(last_row['PDL'])
-pdh_val = float(last_row['PDH'])
-p_low = float(prev_row['Low'])
-p_high = float(prev_row['High'])
+# 3. መጀመሪያ Entry, SL እና TP ወደ ዜሮ መመለስ (ስህተት እንዳይመጣ)
+entry, sl, tp = 0, 0, 0
 
-# አሁን ንፅፅሩን አከናውን
+# 4. የሲግናል ንፅፅር እና ስሌት
 if c_price > pdl_val and p_low < pdl_val:
-    status = "Buy Signal (Liquidity Swept)"
+    status = "BUY SIGNAL (Liquidity Swept)"
     signal_color = "green"
+    entry = round(c_price, 5)
+    sl = round(pdl_val - (pdl_val * 0.001), 5)
+    tp = round(entry + (entry - sl) * 2, 5)
+
 elif c_price < pdh_val and p_high > pdh_val:
-    status = "Sell Signal (Liquidity Swept)"
+    status = "SELL SIGNAL (Liquidity Swept)"
     signal_color = "red"
-else:
-    status = "No Clear Signal"
-    signal_color = "white"
-    status = "SELL SIGNAL (Bearish Reversal)"
-    entry = round(last_row['Close'], 5)
-    sl = round(last_row['PDH'] + (last_row['PDH'] * 0.001), 5)
+    entry = round(c_price, 5)
+    sl = round(pdh_val + (pdh_val * 0.001), 5)
     tp = round(entry - (sl - entry) * 2, 5)
-    signal_color = "red"
 
-# መረጃውን በዌብሳይቱ ላይ ማሳየት
+else:
+    status = "No Clear Signal"
+    signal_color = "white"
+
+# 5. መረጃውን በዌብሳይቱ ላይ ማሳየት
+col1, col2 = st.columns(2)
 with col1:
-    st.metric("አሁኑ ዋጋ", f"{last_row['Close']:.5f}")
+    st.metric("አሁኑ ዋጋ", f"{c_price:.5f}")
 with col2:
     st.markdown(f"**ሁኔታ:** <span style='color:{signal_color}'>{status}</span>", unsafe_allow_html=True)
 
+# 6. የሲግናል ዝርዝር መረጃ (ካለ ብቻ ማሳየት)
 if entry != 0:
     st.success(f"✅ ተገኝቷል! Entry: {entry} | SL: {sl} | TP: {tp}")
 else:
     st.info("ገበያው ትክክለኛውን የ Manipulation ዞን እየጠበቀ ነው...")
 
-# ዳታውን በሰንጠረዥ ማሳየት
+# 7. ዳታውን በሰንጠረዥ ማሳየት
 st.write("#### የቅርብ ጊዜ የዋጋ እንቅስቃሴዎች")
 st.dataframe(data.tail(10))
 
 st.markdown("---")
-st.write("💡 **ማሳሰቢያ:** ይህ አልጎሪዝም 'Central Bank' ገበያውን manipulate የሚያደርጉባቸውን ዞኖች (Liquidity Voids) ለመለየት ታስቦ የተሰራ ነው።")
+st.write("💡 **ማሳሰቢያ:** ይህ አልጎሪዝም 'Central Bank' ገበያውን manipulate የሚያደርጉባቸውን ዞኖች ለመለየት ታስቦ የተሰራ ነው።")
