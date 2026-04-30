@@ -28,7 +28,11 @@ def get_ict_data(symbol, tf):
     return df
 
 data = get_ict_data(symbol, timeframe)
-last_row = data.iloc[-1]
+if not data.empty:
+    last_row = data.iloc[-1]
+    # የተቀረው የኮድህ ክፍል እዚህ ይግባ
+else:
+    st.warning("ለተመረጠው Asset ዳታ ማግኘት አልተቻለም። እባክህ ሌላ ሞክር።")
 prev_row = data.iloc[-2]
 
 # --- ALGORITHM LOGIC (THE BRAIN) ---
