@@ -3,4 +3,5 @@ yfinance
 pandas
 numpy
 plotly
-streamlit-lightweight-charts
+requests
+streamlit-autorefresh
