@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 import requests
+from datetime import datetime # ይህ መስመር ነው image_68572b.png ላይ ላለው ስህተት መፍትሄው
 from streamlit_autorefresh import st_autorefresh
 
 # --- 1. የቴሌግራም መረጃዎች ---
@@ -19,7 +20,7 @@ def send_telegram_msg(message):
 # --- 2. ገጽታ እና Auto-Refresh ---
 st.set_page_config(page_title="ICT Smart Money AI", layout="wide")
 
-# በየ 60 ሰከንዱ ገጹን ራሱ እንዲያድስ ያደርገዋል (ቻርቱ እንዲንቀሳቀስ)
+# በየ 60 ሰከንዱ ገጹን ራሱ እንዲያድስ ያደርገዋል
 st_autorefresh(interval=60000, key="ticker_update")
 
 st.title("🏹 ICT Smart Money AI (Live Refresh)")
@@ -31,7 +32,6 @@ ticker = st.sidebar.selectbox("Select Asset", assets)
 timeframe = st.sidebar.selectbox("Timeframe", ["5m", "15m", "30m", "1h", "1d"])
 
 # --- 3. ዳታ ማውረድ ---
-# ማሳሰቢያ፡ '1m' ዳታ ከፈለግክ period="1d" መሆን አለበት
 data = yf.download(ticker, period="3d", interval=timeframe)
 
 if data.empty:
@@ -42,7 +42,6 @@ if data.empty:
 df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# PDH እና PDL ስሌት
 df['pdh'] = df['high'].shift(1).rolling(window=24, min_periods=1).max()
 df['pdl'] = df['low'].shift(1).rolling(window=24, min_periods=1).min()
 df = df.dropna().copy()
@@ -57,28 +56,24 @@ fig = go.Figure(data=[go.Candlestick(
     name="Price"
 )])
 
-# ሲግናሎችን መፈለግ እና መለጥፍ
 last_signal_text = ""
 for i in range(1, len(df)):
     current = df.iloc[i]
     prev = df.iloc[i-1]
     time_val = df.iloc[i, 0]
     
-    # Buy Signal (Liquidity Sweep of PDL)
     if current['close'] > current['pdl'] and prev['low'] < current['pdl']:
         fig.add_annotation(x=time_val, y=current['low'], text="BUY",
                            showarrow=True, arrowhead=1, bgcolor="#26a69a", font=dict(color="white"))
         if i == len(df) - 1:
             last_signal_text = f"🚀 BUY SIGNAL: {ticker} @ {float(current['close']):,.5f}"
     
-    # Sell Signal (Liquidity Sweep of PDH)
     elif current['close'] < current['pdh'] and prev['high'] > current['pdh']:
         fig.add_annotation(x=time_val, y=current['high'], text="SELL",
                            showarrow=True, arrowhead=1, bgcolor="#ef5350", font=dict(color="white"), ay=-40)
         if i == len(df) - 1:
             last_signal_text = f"⚠️ SELL SIGNAL: {ticker} @ {float(current['close']):,.5f}"
 
-# የመስመር ምልክቶች
 fig.add_trace(go.Scatter(x=df.iloc[:,0], y=df['pdh'], name="PDH", line=dict(color='red', width=1, dash='dash')))
 fig.add_trace(go.Scatter(x=df.iloc[:,0], y=df['pdl'], name="PDL", line=dict(color='green', width=1, dash='dash')))
 
@@ -92,6 +87,7 @@ with col1:
 
 with col2:
     st.write(f"**Asset:** {ticker}")
+    # እዚህ ጋር አሁን ስህተቱ አይመጣም
     st.write(f"**Last Update:** {datetime.now().strftime('%H:%M:%S')}")
     st.metric("Price", f"{float(df.iloc[-1]['close']):,.5f}")
     
