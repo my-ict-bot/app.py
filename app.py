@@ -14,29 +14,32 @@ ticker = st.sidebar.selectbox("Asset", assets)
 timeframe = st.sidebar.selectbox("Timeframe", ["5m", "15m", "30m", "1h", "1d"])
 
 # 2. ዳታ ማውረድ
-data = yf.download(ticker, period="2d" if timeframe == "5m" else "5d", interval=timeframe)
+data = yf.download(ticker, period="3d", interval=timeframe)
 
 if data.empty:
-    st.error("ዳታ የለም")
+    st.error("ዳታ መጫን አልተቻለም። እባክህ ኢንተርኔትህን አረጋግጥ።")
     st.stop()
 
-# 3. ዳታውን ለቻርቱ ማዘጋጀት (ከስህተት የጸዳ አዲስ አሰራር)
+# 3. ዳታውን ማጽዳት (TypeError ለመከላከል)
 df = data.reset_index()
-# የኮለም ስሞችን ማስተካከል
+# የኮለም ስሞችን ማስተካከል (Multi-index ችግርን ይፈታል)
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# የጊዜ አወቃቀር ስህተትን ለመፍታት (image_c0a602.png መፍትሄ)
+# ማንኛውንም ባዶ (NaN) ዳታ ማጽዳት
+df = df.dropna(subset=['open', 'high', 'low', 'close']).copy()
+
+# የጊዜ አወቃቀር - ወደ Unix timestamp መቀየር
 if 'datetime' in df.columns:
     df['time'] = df['datetime'].apply(lambda x: int(x.timestamp()))
 elif 'date' in df.columns:
     df['time'] = df['date'].apply(lambda x: int(x.timestamp()))
 
 # 4. ICT Logic (PDH, PDL)
-# NaN ዳታዎችን ለማስወገድ እና ስሌቱን ለማስተካከል
 df['pdh'] = df['high'].shift(1).rolling(window=24, min_periods=1).max()
 df['pdl'] = df['low'].shift(1).rolling(window=24, min_periods=1).min()
 
-df = df.dropna(subset=['open', 'high', 'low', 'close']).copy()
+# እንደገና ማጽዳት (ስሌቱ NaN ሊፈጥር ስለሚችል)
+df = df.dropna().copy()
 
 last_row = df.iloc[-1]
 c_price = float(last_row['close'])
@@ -45,45 +48,64 @@ pdl_val = float(last_row['pdl'])
 
 # Entry Logic
 entry, sl, tp = 0, 0, 0
-status = "🔎 Waiting for Setup..."
+status = "🔎 Looking for ICT Setup..."
 color = "white"
 
 if c_price > pdl_val and float(df.iloc[-2]['low']) < pdl_val:
-    status = "🔥 ICT BUY SIGNAL"
-    color = "green"
+    status = "🔥 ICT BUY SIGNAL (PDL Sweep)"
+    color = "#26a69a"
     entry = c_price
-    sl = pdl_val * 0.9995
-    tp = entry + (entry - sl) * 3
+    sl = pdl_val * 0.999
+    tp = entry + (entry - sl) * 2
 elif c_price < pdh_val and float(df.iloc[-2]['high']) > pdh_val:
-    status = "⚠️ ICT SELL SIGNAL"
-    color = "red"
+    status = "⚠️ ICT SELL SIGNAL (PDH Sweep)"
+    color = "#ef5350"
     entry = c_price
-    sl = pdh_val * 1.0005
-    tp = entry - (sl - entry) * 3
+    sl = pdh_val * 1.001
+    tp = entry - (sl - entry) * 2
 
-# 5. TradingView Chart Configuration
+# 5. ለቻርቱ ዳታውን ማዘጋጀት (TypeError እንዳይመጣ ቁጥሮቹን ማረጋገጥ)
+chart_data = []
+for _, row in df.iterrows():
+    chart_data.append({
+        "time": int(row['time']),
+        "open": float(row['open']),
+        "high": float(row['high']),
+        "low": float(row['low']),
+        "close": float(row['close'])
+    })
+
 chart_options = {
     "layout": {"background_color": "#0e1117", "textColor": "#d1d4dc"},
     "grid": {"vertLines": {"color": "#242733"}, "horzLines": {"color": "#242733"}},
+    "timeScale": {"timeVisible": True}
 }
 
-candles = [
+series = [
     {
         "type": "Candlestick",
-        "data": df[['time', 'open', 'high', 'low', 'close']].to_dict(orient='records'),
+        "data": chart_data,
         "options": {"upColor": "#26a69a", "downColor": "#ef5350"}
     }
 ]
 
 # 6. ውጤቱን ማሳየት
 col1, col2 = st.columns([3, 1])
+
 with col1:
-    renderLightweightCharts(data=candles, options=chart_options, height=600)
+    if chart_data:
+        renderLightweightCharts(data=series, options=chart_options, height=600)
+    else:
+        st.warning("ቻርቱን ለማሳየት በቂ ዳታ የለም።")
+
 with col2:
-    st.markdown(f"### Status: <span style='color:{color}'>{status}</span>", unsafe_allow_html=True)
+    st.markdown(f"### <span style='color:{color}'>{status}</span>", unsafe_allow_html=True)
+    st.metric("አሁኑ ዋጋ", f"{c_price:,.2f}")
+    
     if entry != 0:
-        st.success(f"**ENTRY:** {entry:.5f}\n\n**SL:** {sl:.5f}\n\n**TP:** {tp:.5f}")
+        st.info(f"**Target TP:** {tp:,.2f}")
+        st.error(f"**Stop Loss:** {sl:,.2f}")
         st.balloons()
-    st.metric("አሁኑ ዋጋ", f"{c_price:.5f}")
-    st.write(f"**PDH:** {pdh_val:.5f}")
-    st.write(f"**PDL:** {pdl_val:.5f}")
+    
+    st.write(f"**PDH (High):** {pdh_val:,.2f}")
+    st.write(f"**PDL (Low):** {pdl_val:,.2f}")
