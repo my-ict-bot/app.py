@@ -2,90 +2,92 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 
 # 1. የዌብሳይቱ ገጽታ
-st.set_page_config(page_title="Pro Smart Money AI", layout="wide")
-st.title("Central Bank Price Action Analysis (AI Predictor)")
+st.set_page_config(page_title="ICT Smart Money AI", layout="wide")
+st.title("ICT Institutional Price Action Analysis")
 
-# 2. Asset መምረጫ (Gold, Forex, Crypto, Indices)
-assets = ["GC=F", "EURUSD=X", "GBPUSD=X", "BTC-USD", "ETH-USD", "SI=F", "CL=F", "^GSPC"]
-ticker = st.sidebar.selectbox("የሚከታተሉት Asset ይምረጡ", assets)
+# Sidebar - Asset መምረጫ
+assets = ["GC=F", "EURUSD=X", "GBPUSD=X", "BTC-USD", "^GSPC", "CL=F"]
+ticker = st.sidebar.selectbox("Asset ይምረጡ", assets)
 timeframe = st.sidebar.selectbox("Timeframe", ["15m", "30m", "1h", "4h", "1d"])
 
-# 3. ዳታ ማውረድ
+# 2. ዳታ ማውረድ
 data = yf.download(ticker, period="5d", interval=timeframe)
 
 if data.empty:
-    st.error("ዳታ ማግኘት አልተቻለም። እባክህ ገበያው ክፍት መሆኑን አረጋግጥ።")
+    st.error("ዳታ ማግኘት አልተቻለም።")
     st.stop()
 
-# 4. Smart Money Indicators (PDH, PDL, FVG)
+# 3. ICT Concepts (PDH, PDL, FVG, OB)
 data['PDH'] = data['High'].shift(1).rolling(window=24).max()
 data['PDL'] = data['Low'].shift(1).rolling(window=24).min()
-
-# FVG (Fair Value Gap) ስሌት
 data['FVG_Up'] = (data['Low'] > data['High'].shift(2))
 data['FVG_Down'] = (data['High'] < data['Low'].shift(2))
 
-# 5. መረጃዎችን ወደ ነጠላ ቁጥር መቀየር (ስህተትን ለመከላከል)
+# 4. መረጃዎችን ወደ ነጠላ ቁጥር መቀየር (Safe conversion)
 def safe_float(val):
-    try:
-        return float(val.iloc[-1]) if hasattr(val, 'iloc') else float(val)
+    try: return float(val.iloc[-1]) if hasattr(val, 'iloc') else float(val)
     except: return 0.0
-
-def safe_bool(val):
-    try:
-        return bool(val.iloc[-1]) if hasattr(val, 'iloc') else bool(val)
-    except: return False
 
 last_row = data.iloc[-1]
 prev_row = data.iloc[-2]
-
 c_price = safe_float(last_row['Close'])
 pdl_val = safe_float(last_row['PDL'])
 pdh_val = safe_float(last_row['PDH'])
-p_low = safe_float(prev_row['Low'])
-p_high = safe_float(prev_row['High'])
-fvg_up = safe_bool(data['FVG_Up'])
-fvg_down = safe_bool(data['FVG_Down'])
 
-# 6. AI Signal & Prediction Logic
-status = "🔎 ገበያው ትክክለኛውን የ Manipulation ዞን እየጠበቀ ነው..."
-signal_color = "white"
 entry, sl, tp = 0, 0, 0
+status = "🔎 Waiting for ICT Setup..."
+sig_color = "white"
 
-# BUY Logic: Liquidity Sweep (ከ PDL በታች) + FVG Confirmation
-if c_price > pdl_val and p_low < pdl_val and fvg_up:
-    status = "🔥 PRO BUY SIGNAL (Liquidity Swept + FVG)"
-    signal_color = "green"
-    entry = round(c_price, 5)
-    sl = round(pdl_val - (pdl_val * 0.001), 5)
-    tp = round(entry + (entry - sl) * 3, 5)
+# 5. ICT Entry Logic (Liquidity Sweep + Displacement)
+if c_price > pdl_val and prev_row['Low'] < pdl_val and last_row['FVG_Up']:
+    status = "🔥 ICT BULLISH REVERSAL (Buy)"
+    sig_color = "green"
+    entry = c_price
+    sl = pdl_val - (pdl_val * 0.0005)
+    tp = entry + (entry - sl) * 3
 
-# SELL Logic: Liquidity Sweep (ከ PDH በላይ) + FVG Confirmation
-elif c_price < pdh_val and p_high > pdh_val and fvg_down:
-    status = "⚠️ PRO SELL SIGNAL (Liquidity Swept + FVG)"
-    signal_color = "red"
-    entry = round(c_price, 5)
-    sl = round(pdh_val + (pdh_val * 0.001), 5)
-    tp = round(entry - (sl - entry) * 3, 5)
+elif c_price < pdh_val and prev_row['High'] > pdh_val and last_row['FVG_Down']:
+    status = "⚠️ ICT BEARISH REVERSAL (Sell)"
+    sig_color = "red"
+    entry = c_price
+    sl = pdh_val + (pdh_val * 0.0005)
+    tp = entry - (sl - entry) * 3
+
+# 6. የቻርት ስራ (Plotly Chart with Position Lines)
+fig = go.Figure(data=[go.Candlestick(x=data.index,
+                open=data['Open'], high=data['High'],
+                low=data['Low'], close=data['Close'], name="Market")])
+
+# PDH/PDL Lines
+fig.add_hline(y=pdh_val, line_dash="dash", line_color="orange", annotation_text="PDH")
+fig.add_hline(y=pdl_val, line_dash="dash", line_color="cyan", annotation_text="PDL")
+
+# Entry, SL, TP Lines (ሲግናል ካለ ብቻ)
+if entry != 0:
+    fig.add_hline(y=entry, line_color="blue", line_width=2, annotation_text="ENTRY")
+    fig.add_hline(y=sl, line_color="red", line_dash="dot", annotation_text="SL")
+    fig.add_hline(y=tp, line_color="green", line_dash="dot", annotation_text="TP")
+    
+    # Position Line (በመስመር ማገናኘት)
+    fig.add_shape(type="line", x0=data.index[-1], y0=sl, x1=data.index[-1], y1=tp,
+                  line=dict(color=sig_color, width=3))
+
+fig.update_layout(height=600, template="plotly_dark", xaxis_rangeslider_visible=False)
 
 # 7. ውጤቱን ማሳየት
-col1, col2 = st.columns(2)
+col1, col2 = st.columns([2, 1])
 with col1:
-    st.metric(f"ወቅታዊ የ {ticker} ዋጋ", f"{c_price:.5f}")
+    st.plotly_chart(fig, use_container_width=True)
+
 with col2:
-    st.markdown(f"### **ሁኔታ:** <span style='color:{signal_color}'>{status}</span>", unsafe_allow_html=True)
+    st.markdown(f"### Status: <span style='color:{sig_color}'>{status}</span>", unsafe_allow_html=True)
+    if entry != 0:
+        st.success(f"**ENTRY:** {entry:.5f}\n\n**SL:** {sl:.5f}\n\n**TP:** {tp:.5f}")
+        st.balloons()
+    else:
+        st.info("ገበያው የ Liquidity Sweep እና FVG ማረጋገጫ እየጠበቀ ነው...")
 
-if entry != 0:
-    st.balloons()
-    st.success(f"🎯 **TARGET FOUND!** \n\n **Entry:** {entry} | **SL:** {sl} | **TP:** {tp}")
-    # የድምፅ ማስጠንቀቂያ (Alert)
-    st.components.v1.html('<audio autoplay><source src="https://www.soundjay.com/buttons/beep-01a.mp3"></audio>', height=0)
-
-# 8. የዋጋ ሰንጠረዥ
-st.write("#### የቅርብ ጊዜ የዋጋ እንቅስቃሴዎች")
 st.dataframe(data.tail(10))
-
-st.markdown("---")
-st.info("💡 **ጠቃሚ መረጃ:** ይህ AI 'Smart Money Concepts' (SMC) በመጠቀም ገበያው ወዴት ሊሄድ እንደሚችል ይተነብያል።")
