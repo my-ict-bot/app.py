@@ -17,31 +17,28 @@ timeframe = st.sidebar.selectbox("Timeframe", ["5m", "15m", "30m", "1h", "1d"])
 data = yf.download(ticker, period="5d", interval=timeframe)
 
 if data.empty:
-    st.error("ዳታ መጫን አልተቻለም።")
+    st.error("ዳታ አልተገኘም")
     st.stop()
 
-# 3. ዳታውን ማጽዳት
+# 3. ዳታውን ማጽዳት (Critical for image_c04161.png error)
 df = data.reset_index()
-# የኮለም ስሞችን ማስተካከል (Multi-index ችግርን ይፈታል)
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# 4. ICT Logic (PDH, PDL)
-df['pdh'] = df['high'].shift(1).rolling(window=24, min_periods=1).max()
-df['pdl'] = df['low'].shift(1).rolling(window=24, min_periods=1).min()
-
-# ለቻርቱ አስፈላጊ የሆኑ ኮለሞችን ብቻ መውሰድ እና NaN ማስወገድ (ለ TypeError መፍትሄ)
-cols_to_keep = ['datetime', 'date', 'open', 'high', 'low', 'close', 'pdh', 'pdl']
-available_cols = [c for c in cols_to_keep if c in df.columns]
-df = df[available_cols].dropna().copy()
-
-# የጊዜ አወቃቀር
+# የጊዜ አወቃቀርን ማስተካከል
 time_col = 'datetime' if 'datetime' in df.columns else 'date'
 df['time'] = df[time_col].apply(lambda x: int(x.timestamp()))
 
-# 5. ለቻርቱ ዳታውን በንጹህ Dictionary ማዘጋጀት
-chart_data = []
+# ICT Logic
+df['pdh'] = df['high'].shift(1).rolling(window=24, min_periods=1).max()
+df['pdl'] = df['low'].shift(1).rolling(window=24, min_periods=1).min()
+
+# **ዋናው መፍትሄ**፦ ሁሉንም NaN (ባዶ) ዳታዎች እና ያልተሟሉ መስመሮችን ሙሉ በሙሉ ማስወገድ
+df = df[['time', 'open', 'high', 'low', 'close', 'pdh', 'pdl']].dropna().copy()
+
+# 4. ዳታውን ለቻርቱ ማዘጋጀት (TypeError እንዳይመጣ ጥንቃቄ ተደርጓል)
+chart_candles = []
 for _, row in df.iterrows():
-    chart_data.append({
+    chart_candles.append({
         "time": int(row['time']),
         "open": float(row['open']),
         "high": float(row['high']),
@@ -52,23 +49,19 @@ for _, row in df.iterrows():
 chart_options = {
     "layout": {"background_color": "#0e1117", "textColor": "#d1d4dc"},
     "grid": {"vertLines": {"color": "#242733"}, "horzLines": {"color": "#242733"}},
-    "timeScale": {"timeVisible": True, "secondsVisible": False}
+    "timeScale": {"timeVisible": True}
 }
 
-series = [
-    {
-        "type": "Candlestick",
-        "data": chart_data,
-        "options": {"upColor": "#26a69a", "downColor": "#ef5350", "borderVisible": False}
-    }
-]
-
-# 6. ውጤቱን ማሳየት
+# 5. ውጤቱን ማሳየት
 col1, col2 = st.columns([3, 1])
 
 with col1:
-    if chart_data:
+    if chart_candles:
+        # እዚህ ጋር ነው በምስሉ ላይ ስህተት ይፈጠር የነበረው፤ አሁን chart_candles ንጹህ ነው
+        series = [{"type": "Candlestick", "data": chart_candles}]
         renderLightweightCharts(data=series, options=chart_options, height=600)
+    else:
+        st.warning("ቻርቱን ለማሳየት በቂ ዳታ አልተገኘም።")
 
 with col2:
     last_row = df.iloc[-1]
@@ -76,10 +69,10 @@ with col2:
     pdh_val = float(last_row['pdh'])
     pdl_val = float(last_row['pdl'])
 
-    # ሲግናል መፈለጊያ
-    status = "🔎 Scanning..."
+    status = "🔎 SCANNING"
     color = "white"
     
+    # Simple ICT Logic
     if c_price > pdl_val and float(df.iloc[-2]['low']) < pdl_val:
         status = "🔥 ICT BUY SIGNAL"
         color = "#26a69a"
@@ -89,10 +82,5 @@ with col2:
 
     st.markdown(f"### <span style='color:{color}'>{status}</span>", unsafe_allow_html=True)
     st.metric("አሁኑ ዋጋ", f"{c_price:,.5f}")
-    
-    if status != "🔎 Scanning...":
-        st.balloons()
-    
-    st.write("---")
-    st.write(f"**PDH:** {pdh_val:,.5f}")
-    st.write(f"**PDL:** {pdl_val:,.5f}")
+    st.write(f"**PDH (High):** {pdh_val:,.5f}")
+    st.write(f"**PDL (Low):** {pdl_val:,.5f}")
