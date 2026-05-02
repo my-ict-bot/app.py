@@ -1,10 +1,11 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from streamlit_lightweight_charts import renderLightweightCharts
 
 # 1. ገጽታ
-st.set_page_config(page_title="ICT TradingView AI", layout="wide")
+st.set_page_config(page_title="ICT Smart Money AI", layout="wide")
 st.title("ICT Smart Money AI (TradingView Style)")
 
 # Sidebar
@@ -19,24 +20,28 @@ if data.empty:
     st.error("ዳታ የለም")
     st.stop()
 
-# 3. ዳታውን ለቻርቱ ማዘጋጀት (ከስህተት የጸዳ)
+# 3. ዳታውን ለቻርቱ ማዘጋጀት (ከስህተት የጸዳ አዲስ አሰራር)
 df = data.reset_index()
+# የኮለም ስሞችን ማስተካከል
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# ባዶ ዳታዎችን ማስወገድ (ለ TypeError መፍትሄ)
-df = df.dropna().copy()
+# የጊዜ አወቃቀር ስህተትን ለመፍታት (image_c0a602.png መፍትሄ)
+if 'datetime' in df.columns:
+    df['time'] = df['datetime'].apply(lambda x: int(x.timestamp()))
+elif 'date' in df.columns:
+    df['time'] = df['date'].apply(lambda x: int(x.timestamp()))
 
-# የጊዜ አወቃቀር (Lightweight charts Unix timestamp ይመርጣል)
-df['time'] = df['datetime'].dt.view('int64') // 10**9 
+# 4. ICT Logic (PDH, PDL)
+# NaN ዳታዎችን ለማስወገድ እና ስሌቱን ለማስተካከል
+df['pdh'] = df['high'].shift(1).rolling(window=24, min_periods=1).max()
+df['pdl'] = df['low'].shift(1).rolling(window=24, min_periods=1).min()
 
-# 4. ICT Logic
-df['pdh'] = df['high'].shift(1).rolling(window=24).max()
-df['pdl'] = df['low'].shift(1).rolling(window=24).min()
+df = df.dropna(subset=['open', 'high', 'low', 'close']).copy()
 
 last_row = df.iloc[-1]
 c_price = float(last_row['close'])
-pdh_val = float(last_row['pdh']) if not pd.isna(last_row['pdh']) else c_price
-pdl_val = float(last_row['pdl']) if not pd.isna(last_row['pdl']) else c_price
+pdh_val = float(last_row['pdh'])
+pdl_val = float(last_row['pdl'])
 
 # Entry Logic
 entry, sl, tp = 0, 0, 0
@@ -56,25 +61,17 @@ elif c_price < pdh_val and float(df.iloc[-2]['high']) > pdh_val:
     sl = pdh_val * 1.0005
     tp = entry - (sl - entry) * 3
 
-# 5. TradingView Style Chart Configuration
+# 5. TradingView Chart Configuration
 chart_options = {
     "layout": {"background_color": "#0e1117", "textColor": "#d1d4dc"},
     "grid": {"vertLines": {"color": "#242733"}, "horzLines": {"color": "#242733"}},
-    "timeScale": {"timeVisible": True, "secondsVisible": False},
 }
-
-# ቻርቱ የሚቀበለው ትክክለኛ የዳታ ፎርማት
-chart_data = df[['time', 'open', 'high', 'low', 'close']].to_dict(orient='records')
 
 candles = [
     {
         "type": "Candlestick",
-        "data": chart_data,
-        "options": {
-            "upColor": "#26a69a", "downColor": "#ef5350", 
-            "borderVisible": False, "wickUpColor": "#26a69a", 
-            "wickDownColor": "#ef5350"
-        }
+        "data": df[['time', 'open', 'high', 'low', 'close']].to_dict(orient='records'),
+        "options": {"upColor": "#26a69a", "downColor": "#ef5350"}
     }
 ]
 
@@ -88,3 +85,5 @@ with col2:
         st.success(f"**ENTRY:** {entry:.5f}\n\n**SL:** {sl:.5f}\n\n**TP:** {tp:.5f}")
         st.balloons()
     st.metric("አሁኑ ዋጋ", f"{c_price:.5f}")
+    st.write(f"**PDH:** {pdh_val:.5f}")
+    st.write(f"**PDL:** {pdl_val:.5f}")
