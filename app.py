@@ -19,32 +19,37 @@ if data.empty:
     st.error("ዳታ የለም")
     st.stop()
 
-# 3. ዳታውን ለቻርቱ ማዘጋጀት (የተስተካከለው ክፍል)
+# 3. ዳታውን ለቻርቱ ማዘጋጀት (ከስህተት የጸዳ)
 df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
-df['time'] = df['datetime'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
-# 4. ICT Logic (PDH, PDL)
+# ባዶ ዳታዎችን ማስወገድ (ለ TypeError መፍትሄ)
+df = df.dropna().copy()
+
+# የጊዜ አወቃቀር (Lightweight charts Unix timestamp ይመርጣል)
+df['time'] = df['datetime'].dt.view('int64') // 10**9 
+
+# 4. ICT Logic
 df['pdh'] = df['high'].shift(1).rolling(window=24).max()
 df['pdl'] = df['low'].shift(1).rolling(window=24).min()
 
 last_row = df.iloc[-1]
 c_price = float(last_row['close'])
-pdh_val = float(last_row['pdh']) if not pd.isna(last_row['pdh']) else 0
-pdl_val = float(last_row['pdl']) if not pd.isna(last_row['pdl']) else 0
+pdh_val = float(last_row['pdh']) if not pd.isna(last_row['pdh']) else c_price
+pdl_val = float(last_row['pdl']) if not pd.isna(last_row['pdl']) else c_price
 
 # Entry Logic
 entry, sl, tp = 0, 0, 0
 status = "🔎 Waiting for Setup..."
 color = "white"
 
-if c_price > pdl_val and pdl_val != 0 and float(df.iloc[-2]['low']) < pdl_val:
+if c_price > pdl_val and float(df.iloc[-2]['low']) < pdl_val:
     status = "🔥 ICT BUY SIGNAL"
     color = "green"
     entry = c_price
     sl = pdl_val * 0.9995
     tp = entry + (entry - sl) * 3
-elif c_price < pdh_val and pdh_val != 0 and float(df.iloc[-2]['high']) > pdh_val:
+elif c_price < pdh_val and float(df.iloc[-2]['high']) > pdh_val:
     status = "⚠️ ICT SELL SIGNAL"
     color = "red"
     entry = c_price
@@ -55,16 +60,21 @@ elif c_price < pdh_val and pdh_val != 0 and float(df.iloc[-2]['high']) > pdh_val
 chart_options = {
     "layout": {"background_color": "#0e1117", "textColor": "#d1d4dc"},
     "grid": {"vertLines": {"color": "#242733"}, "horzLines": {"color": "#242733"}},
-    "crosshair": {"mode": 0},
-    "priceScale": {"borderVisible": False},
-    "timeScale": {"borderVisible": False, "timeVisible": True},
+    "timeScale": {"timeVisible": True, "secondsVisible": False},
 }
+
+# ቻርቱ የሚቀበለው ትክክለኛ የዳታ ፎርማት
+chart_data = df[['time', 'open', 'high', 'low', 'close']].to_dict(orient='records')
 
 candles = [
     {
         "type": "Candlestick",
-        "data": df[['time', 'open', 'high', 'low', 'close']].to_dict(orient='records'),
-        "options": {"upColor": "#26a69a", "downColor": "#ef5350", "borderVisible": False, "wickUpColor": "#26a69a", "wickDownColor": "#ef5350"}
+        "data": chart_data,
+        "options": {
+            "upColor": "#26a69a", "downColor": "#ef5350", 
+            "borderVisible": False, "wickUpColor": "#26a69a", 
+            "wickDownColor": "#ef5350"
+        }
     }
 ]
 
@@ -78,4 +88,3 @@ with col2:
         st.success(f"**ENTRY:** {entry:.5f}\n\n**SL:** {sl:.5f}\n\n**TP:** {tp:.5f}")
         st.balloons()
     st.metric("አሁኑ ዋጋ", f"{c_price:.5f}")
-    
