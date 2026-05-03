@@ -1,95 +1,105 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import requests
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. የተስተካከለ የቴሌግራም መረጃ ---
+# --- 1. የቴሌግራም መረጃ ---
 BOT_TOKEN = "8697770325:AAEBF1hdY69TwJo53thF7yzyhm9uWJaSsE0"
-CHAT_ID = "8125084772" # ያንተ ትክክለኛ ID እዚህ ገብቷል
+CHAT_ID = "8125084772"
 
 def send_telegram_msg(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={message}"
-    try:
-        requests.get(url, timeout=5)
-    except:
-        pass
+    try: requests.get(url, timeout=5)
+    except: pass
 
-# --- 2. ገጽታ እና Auto-Refresh ---
-st.set_page_config(page_title="ICT AI Terminal", layout="wide")
+# --- 2. ገጽታ ---
+st.set_page_config(page_title="ICT Advanced AI", layout="wide")
 st_autorefresh(interval=60000, key="live_update")
 
-st.title("🏹 ICT Smart Money AI Pro")
+st.title("🏹 ICT Advanced Strategy Terminal")
 
 # Sidebar
-st.sidebar.header("Trading Terminal")
+st.sidebar.header("Advanced Settings")
 ticker = st.sidebar.selectbox("Asset", ["GC=F", "EURUSD=X", "GBPUSD=X", "BTC-USD"])
 timeframe = st.sidebar.selectbox("Timeframe", ["5m", "15m", "1h", "1d"])
 
-# --- 3. ዳታ እና ስልት (ICT Logic) ---
+# --- 3. ዳታ ማውረድ ---
 data = yf.download(ticker, period="3d", interval=timeframe)
 if data.empty: st.stop()
 
 df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# PDH/PDL
-df['pdh'] = df['high'].shift(1).rolling(window=24).max()
-df['pdl'] = df['low'].shift(1).rolling(window=24).min()
+# --- 4. ICT Advanced Logic ---
 
-# FVG Detection
-def find_fvg(df):
-    fvgs = []
-    for i in range(2, len(df)):
-        if df.iloc[i-2]['high'] < df.iloc[i]['low']:
-            fvgs.append({'type': 'Bullish', 'top': df.iloc[i]['low'], 'bottom': df.iloc[i-2]['high'], 'index': i-1})
-        elif df.iloc[i-2]['low'] > df.iloc[i]['high']:
-            fvgs.append({'type': 'Bearish', 'top': df.iloc[i-2]['low'], 'bottom': df.iloc[i]['high'], 'index': i-1})
-    return fvgs
+# Equilibrium & OTE (Fibonacci)
+high_3d = df['high'].max()
+low_3d = df['low'].min()
+equilibrium = (high_3d + low_3d) / 2
+ote_deep = low_3d + (high_3d - low_3d) * 0.79
+ote_shallow = low_3d + (high_3d - low_3d) * 0.62
 
-fvgs = find_fvg(df)
+# Order Block (ቀላል Logic)
+def detect_ob(df):
+    obs = []
+    for i in range(1, len(df)-1):
+        # Bullish OB (መጨረሻ የነበረች ቀይ ሻማ ከኃይለኛ አረንጓዴ በፊት)
+        if df.iloc[i]['close'] < df.iloc[i]['open'] and df.iloc[i+1]['close'] > df.iloc[i]['high']:
+            obs.append({'type': 'Bullish', 'price': df.iloc[i]['close'], 'time': df.iloc[i,0]})
+        # Bearish OB
+        elif df.iloc[i]['close'] > df.iloc[i]['open'] and df.iloc[i+1]['close'] < df.iloc[i]['low']:
+            obs.append({'type': 'Bearish', 'price': df.iloc[i]['close'], 'time': df.iloc[i,0]})
+    return obs
 
-# --- 4. ቻርቱን መስራት ---
-fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Market")])
+obs = detect_ob(df)
 
-# FVG ሳጥኖች
-for f in fvgs[-5:]:
-    color = "rgba(0, 255, 0, 0.2)" if f['type'] == 'Bullish' else "rgba(255, 0, 0, 0.2)"
-    fig.add_shape(type="rect", x0=df.iloc[f['index'], 0], y0=f['bottom'], x1=df.iloc[-1, 0], y1=f['top'], fillcolor=color, line_width=0)
+# Price Delivery Phase
+last_pct_change = ((df['close'].iloc[-1] - df['close'].iloc[-5]) / df['close'].iloc[-5]) * 100
+if abs(last_pct_change) < 0.1: phase = "Consolidation 🛡️"
+elif last_pct_change > 0.3: phase = "Expansion (Bullish) 🚀"
+elif last_pct_change < -0.3: phase = "Expansion (Bearish) 📉"
+else: phase = "Retracement/Reversal 🔄"
 
-# ሲግናል መፈለጊያ
-last_row = df.iloc[-1]
-prev_row = df.iloc[-2]
-signal = None
+# --- 5. ቻርቱን መስራት ---
+fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price")])
 
-if last_row['close'] > last_row['pdl'] and prev_row['low'] < last_row['pdl']:
-    signal = "BUY"
-    price, sl = float(last_row['close']), float(last_row['pdl'] * 0.999)
-    tp = float(price + (price - sl) * 2)
-elif last_row['close'] < last_row['pdh'] and prev_row['high'] > last_row['pdh']:
-    signal = "SELL"
-    price, sl = float(last_row['close']), float(last_row['pdh'] * 1.001)
-    tp = float(price - (sl - price) * 2)
+# Equilibrium Line
+fig.add_hline(y=equilibrium, line_dash="dot", line_color="yellow", annotation_text="Equilibrium (50%)")
 
-fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False)
+# OTE Zone
+fig.add_hrect(y0=ote_shallow, y1=ote_deep, fillcolor="gold", opacity=0.1, line_width=0, annotation_text="OTE Zone")
 
-# --- 5. UI እና ውጤት ማሳያ ---
-c1, c2 = st.columns([3, 1])
-with c1: st.plotly_chart(fig, use_container_width=True)
+# Order Blocks (ቅርብ ጊዜ የነበሩትን)
+for ob in obs[-3:]:
+    color = "green" if ob['type'] == 'Bullish' else "red"
+    fig.add_hline(y=ob['price'], line_color=color, line_width=1, opacity=0.5)
 
-with c2:
-    st.subheader("Signal Details")
-    if st.button("ቴሌግራምን ሞክር"):
-        send_telegram_msg("🚀 የቴሌግራም ቦቱ አሁን በትክክል ተገናኝቷል!")
-        st.success("ሙከራ ተልኳል!")
+fig.update_layout(template="plotly_dark", height=650, xaxis_rangeslider_visible=False)
+
+# --- 6. UI ማሳያ ---
+col1, col2 = st.columns([4, 1])
+
+with col1:
+    st.plotly_chart(fig, use_container_width=True)
+
+with col2:
+    st.subheader("Market Status")
+    st.info(f"Phase: **{phase}**")
     
-    if signal:
-        st.markdown(f"### 🔥 {signal} SIGNAL")
-        st.write(f"**Entry:** {price:,.5f}\n**SL:** {sl:,.5f}\n**TP:** {tp:,.5f}")
-        send_telegram_msg(f"🎯 {signal} SIGNAL: {ticker}\nEntry: {price:,.5f}\nSL: {sl:,.5f}\nTP: {tp:,.5f}")
-    else:
-        st.info("Scanning Market...")
+    st.metric("Current Price", f"{df.iloc[-1]['close']:,.2f}")
     
-    st.write(f"🕒 Last Sync: {datetime.now().strftime('%H:%M:%S')}")
+    st.divider()
+    st.write("### Strategy Check")
+    is_in_ote = ote_shallow <= df.iloc[-1]['close'] <= ote_deep
+    st.write(f"In OTE Zone: {'✅' if is_in_ote else '❌'}")
+    
+    # ሲግናል መላኪያ
+    if is_in_ote:
+        st.success("🎯 OTE Setup Detected!")
+        send_telegram_msg(f"🏹 ICT ALERT: {ticker} in OTE Zone!\nPhase: {phase}\nPrice: {df.iloc[-1]['close']:,.2f}")
+
+    st.write(f"🕒 Sync: {datetime.now().strftime('%H:%M:%S')}")
