@@ -17,7 +17,7 @@ def send_telegram_msg(message):
 
 # --- 2. ገጽታ ---
 st.set_page_config(page_title="ICT Pro Terminal", layout="wide")
-st_autorefresh(interval=60000, key="live_update") # በየደቂቃው ራሱን ያድሳል
+st_autorefresh(interval=60000, key="live_update")
 
 st.title("🏹 ICT Advanced Strategy Terminal")
 
@@ -33,64 +33,71 @@ df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
 # --- 4. ICT Advanced Logic ---
-# Equilibrium & OTE (ለቻርቱ ብቻ)
 high_3d = df['high'].max()
 low_3d = df['low'].min()
 equilibrium = (high_3d + low_3d) / 2
 ote_deep = low_3d + (high_3d - low_3d) * 0.79
 ote_shallow = low_3d + (high_3d - low_3d) * 0.62
 
-# FVG Detection
 def get_fvgs(df):
     fvgs = []
     for i in range(2, len(df)):
-        if df.iloc[i-2]['high'] < df.iloc[i]['low']: # Bullish
+        if df.iloc[i-2]['high'] < df.iloc[i]['low']:
             fvgs.append({'type': 'Bullish', 'top': df.iloc[i]['low'], 'bottom': df.iloc[i-2]['high']})
-        elif df.iloc[i-2]['low'] > df.iloc[i]['high']: # Bearish
+        elif df.iloc[i-2]['low'] > df.iloc[i]['high']:
             fvgs.append({'type': 'Bearish', 'top': df.iloc[i-2]['low'], 'bottom': df.iloc[i]['high']})
     return fvgs
 
-# Order Block Detection (OB)
 def get_obs(df):
     obs = []
     for i in range(1, len(df)-1):
         if df.iloc[i+1]['close'] > df.iloc[i]['high'] and df.iloc[i]['close'] < df.iloc[i]['open']:
-            obs.append({'type': 'Bullish', 'level': df.iloc[i]['high']})
+            obs.append({'type': 'Bullish', 'level': df.iloc[i]['high'], 'low': df.iloc[i]['low']})
         elif df.iloc[i+1]['close'] < df.iloc[i]['low'] and df.iloc[i]['close'] > df.iloc[i]['open']:
-            obs.append({'type': 'Bearish', 'level': df.iloc[i]['low']})
+            obs.append({'type': 'Bearish', 'level': df.iloc[i]['low'], 'high': df.iloc[i]['high']})
     return obs
 
 current_fvgs = get_fvgs(df)
 current_obs = get_obs(df)
 curr_price = df.iloc[-1]['close']
 
-# --- 5. ሲግናል መላኪያ (OB ወይም FVG ሲነካ ብቻ) ---
+# --- 5. ሲግናል እና SL/TP ስሌት ---
 entry_triggered = False
 msg_content = ""
 
-# የቅርብ ጊዜ OB መነካቱን ቼክ ማድረግ
-for ob in current_obs[-2:]:
-    if abs(curr_price - ob['level']) / ob['level'] < 0.0005: # ዋጋው OB ጋር ሲጠጋ
+# ለ OB ንክኪ
+for ob in current_obs[-1:]:
+    if ob['type'] == 'Bullish' and abs(curr_price - ob['level']) / ob['level'] < 0.0005:
         entry_triggered = True
-        msg_content = f"🎯 ICT ENTRY: {ticker}\nPrice hit an ORDER BLOCK at {curr_price:,.2f}!"
+        sl = ob['low'] * 0.9995
+        tp = curr_price + (curr_price - sl) * 2
+        msg_content = f"🎯 ICT BUY (OB): {ticker}\nEntry: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
+    elif ob['type'] == 'Bearish' and abs(curr_price - ob['level']) / ob['level'] < 0.0005:
+        entry_triggered = True
+        sl = ob['high'] * 1.0005
+        tp = curr_price - (sl - curr_price) * 2
+        msg_content = f"🎯 ICT SELL (OB): {ticker}\nEntry: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
 
-# የቅርብ ጊዜ FVG መነካቱን ቼክ ማድረግ
-for fvg in current_fvgs[-2:]:
-    if fvg['bottom'] <= curr_price <= fvg['top']:
-        entry_triggered = True
-        msg_content = f"🎯 ICT ENTRY: {ticker}\nPrice entered a FAIR VALUE GAP at {curr_price:,.2f}!"
+# ለ FVG ንክኪ (ከሌለ)
+if not entry_triggered:
+    for fvg in current_fvgs[-1:]:
+        if fvg['type'] == 'Bullish' and fvg['bottom'] <= curr_price <= fvg['top']:
+            entry_triggered = True
+            sl = fvg['bottom'] * 0.9995
+            tp = curr_price + (curr_price - sl) * 2
+            msg_content = f"🎯 ICT BUY (FVG): {ticker}\nEntry: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
 
 if entry_triggered:
     send_telegram_msg(msg_content)
 
-# --- 6. ቻርቱን መስራት (ሁሉም ምስሉ ላይ ያሉ ነገሮች አሉ) ---
+# --- 6. ቻርቱን መስራት ---
 fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price")])
 fig.add_hline(y=equilibrium, line_dash="dot", line_color="yellow", annotation_text="Equilibrium")
 fig.add_hrect(y0=ote_shallow, y1=ote_deep, fillcolor="gold", opacity=0.1, line_width=0, annotation_text="OTE Zone")
 
-# OB መስመሮችን ማሳያ
 for ob in current_obs[-3:]:
-    fig.add_hline(y=ob['level'], line_color="cyan", line_width=1, opacity=0.4)
+    color = "cyan" if ob['type'] == 'Bullish' else "magenta"
+    fig.add_hline(y=ob['level'], line_color=color, line_width=1, opacity=0.4)
 
 fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False)
 
@@ -100,12 +107,12 @@ with c1: st.plotly_chart(fig, use_container_width=True)
 with c2:
     st.subheader("Market Status")
     if st.button("📢 ቴሌግራምን ሞክር"):
-        send_telegram_msg("🚀 ቦቱ በትክክል እየሰራ ነው። OB ወይም FVG ሲነካ መልዕክት ይልክልሃል።")
+        send_telegram_msg("🚀 ቦቱ በትክክል እየሰራ ነው። ሲግናል ሲኖር Entry, SL, እና TP ይላካል።")
     
     st.metric("Current Price", f"{curr_price:,.2f}")
     st.divider()
     if entry_triggered:
         st.success("🔥 ENTRY DETECTED!")
+        st.write(msg_content)
     else:
-        st.info("Market Scanning for OB/FVG...")
-    st.write(f"🕒 Sync: {datetime.now().strftime('%H:%M:%S')}")
+        st.info("Market Scanning...")
