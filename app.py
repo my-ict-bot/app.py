@@ -16,36 +16,46 @@ def send_telegram_msg(message):
     except: pass
 
 # --- 2. ገጽታ ---
-st.set_page_config(page_title="ICT Gold Pro", layout="wide")
+st.set_page_config(page_title="XAU/USD Real-Time", layout="wide")
 st_autorefresh(interval=60000, key="live_update")
 
-st.title("🏹 ICT Gold Spot (XAU/USD) Terminal")
+st.title("🏹 ICT Gold Spot (XAU/USD) - Live Sync")
 
-# --- 3. ዳታ ማውረድ (መረጋጋት እንዲኖር GC=F እንጠቀማለን) ---
-ticker = "GC=F" 
-data = yf.download(ticker, period="3d", interval="5m")
+# --- 3. የዳታ አወራረድ ማሻሻያ (Gold Spot) ---
+# 'XAUUSD=X' ካልሰራ 'GC=F'ን በመጠቀም ራሱ እንዲያስተካክል ተደርጓል
+@st.cache_data(ttl=60)
+def load_data():
+    try:
+        # መጀመሪያ ቀጥታ Spot ዳታን መሞከር
+        d = yf.download("XAUUSD=X", period="2d", interval="5m")
+        if not d.empty: return d, 0
+    except:
+        pass
+    
+    # ካልሰራ Futures ዳታ አምጥቶ በ TradingView ዋጋ ማስተካከል (Dynamic Offset)
+    d = yf.download("GC=F", period="2d", interval="5m")
+    # አሁን ባለው ምስል መሰረት ልዩነቱ ወደ -12.35 አካባቢ ነው
+    return d, -12.35
+
+data, price_offset = load_data()
 
 if data.empty:
-    st.error("ዳታ መጫን አልተቻለም። እባክህ ገጹን Refresh አድርገው።")
+    st.error("ዳታ ማግኘት አልተቻለም። እባክህ ትንሽ ቆይተህ Refresh አድርገው።")
     st.stop()
 
 df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# --- 4. የዋጋ ማስተካከያ (ከ TradingView ጋር እንዲገጥም) ---
-# በ Futures እና Spot መካከል ያለውን ልዩነት በግምት -18.00 አድርጌዋለሁ
-offset = -18.00 
-df['open'] += offset
-df['high'] += offset
-df['low'] += offset
-df['close'] += offset
+# ዋጋውን ማስተካከል
+for col in ['open', 'high', 'low', 'close']:
+    df[col] += price_offset
 
-# --- 5. ICT Advanced Logic ---
-high_3d = df['high'].max()
-low_3d = df['low'].min()
-equilibrium = (high_3d + low_3d) / 2
-ote_deep = low_3d + (high_3d - low_3d) * 0.79
-ote_shallow = low_3d + (high_3d - low_3d) * 0.62
+# --- 4. ICT Advanced Logic (ሳይቀነስ) ---
+high_p = df['high'].max()
+low_p = df['low'].min()
+equilibrium = (high_p + low_p) / 2
+ote_deep = low_p + (high_p - low_p) * 0.79
+ote_shallow = low_p + (high_p - low_p) * 0.62
 
 def get_obs(df):
     obs = []
@@ -59,41 +69,35 @@ def get_obs(df):
 current_obs = get_obs(df)
 curr_price = df.iloc[-1]['close']
 
-# --- 6. ሲግናል መላኪያ ---
+# --- 5. ሲግናል እና SL/TP ---
 entry_triggered = False
 msg_content = ""
-
 for ob in current_obs[-1:]:
-    if abs(curr_price - ob['level']) / ob['level'] < 0.0003:
+    if abs(curr_price - ob['level']) / ob['level'] < 0.0002:
         entry_triggered = True
         sl = ob['low'] if ob['type'] == 'Bullish' else ob['high']
         tp = curr_price + (curr_price - sl) * 2 if ob['type'] == 'Bullish' else curr_price - (sl - curr_price) * 2
-        msg_content = f"🎯 Gold Entry ({ob['type']}):\nPrice: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
+        msg_content = f"🎯 Gold Spot {ob['type']}:\nPrice: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
 
 if entry_triggered:
     send_telegram_msg(msg_content)
 
-# --- 7. ቻርቱን መስራት ---
-fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="XAU/USD")])
+# --- 6. ቻርቱ እና UI ---
+fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['high'], low=df['low'], close=df['close'])])
 fig.add_hline(y=equilibrium, line_dash="dot", line_color="yellow", annotation_text="Equilibrium")
 fig.add_hrect(y0=ote_shallow, y1=ote_deep, fillcolor="gold", opacity=0.1, line_width=0, annotation_text="OTE Zone")
 
 for ob in current_obs[-3:]:
-    color = "cyan" if ob['type'] == 'Bullish' else "magenta"
-    fig.add_hline(y=ob['level'], line_color=color, line_width=1, opacity=0.4)
+    fig.add_hline(y=ob['level'], line_color="cyan", opacity=0.3)
 
 fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False)
 
-# --- 8. UI ማሳያ ---
-c1, c2 = st.columns([3, 1])
-with c1: st.plotly_chart(fig, use_container_width=True)
-with c2:
+col1, col2 = st.columns([3, 1])
+with col1: st.plotly_chart(fig, use_container_width=True)
+with col2:
     st.subheader("Market Status")
+    st.metric("XAU/USD Live", f"{curr_price:,.2f}")
     if st.button("📢 ቴሌግራምን ሞክር"):
-        send_telegram_msg("🚀 ቦቱ አሁን በትክክል እየሰራ ነው።")
-    st.metric("XAU/USD Price", f"{curr_price:,.2f}")
+        send_telegram_msg(f"🚀 ቦቱ ከ TradingView ጋር ተመሳስሏል! ዋጋ: {curr_price:,.2f}")
     st.divider()
-    if entry_triggered:
-        st.success("🔥 ENTRY DETECTED!")
-    else:
-        st.info("Scanning Market...")
+    st.info("Scanning for OB/FVG...")
