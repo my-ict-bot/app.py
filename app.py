@@ -16,38 +16,36 @@ def send_telegram_msg(message):
     except: pass
 
 # --- 2. ገጽታ ---
-st.set_page_config(page_title="ICT Gold Spot Terminal", layout="wide")
+st.set_page_config(page_title="ICT Gold Pro", layout="wide")
 st_autorefresh(interval=60000, key="live_update")
 
 st.title("🏹 ICT Gold Spot (XAU/USD) Terminal")
 
-# Sidebar - Gold Spot (XAUUSD=X) በቋሚነት ተመርጧል
-ticker = st.sidebar.selectbox("Asset", ["XAUUSD=X", "EURUSD=X", "GBPUSD=X", "BTC-USD"])
-timeframe = st.sidebar.selectbox("Timeframe", ["5m", "15m", "1h", "1d"])
+# --- 3. ዳታ ማውረድ (መረጋጋት እንዲኖር GC=F እንጠቀማለን) ---
+ticker = "GC=F" 
+data = yf.download(ticker, period="3d", interval="5m")
 
-# --- 3. ዳታ ማውረድ ---
-data = yf.download(ticker, period="3d", interval=timeframe)
-if data.empty: st.stop()
+if data.empty:
+    st.error("ዳታ መጫን አልተቻለም። እባክህ ገጹን Refresh አድርገው።")
+    st.stop()
 
 df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# --- 4. ICT Advanced Logic (ሳይቀነስ) ---
+# --- 4. የዋጋ ማስተካከያ (ከ TradingView ጋር እንዲገጥም) ---
+# በ Futures እና Spot መካከል ያለውን ልዩነት በግምት -18.00 አድርጌዋለሁ
+offset = -18.00 
+df['open'] += offset
+df['high'] += offset
+df['low'] += offset
+df['close'] += offset
+
+# --- 5. ICT Advanced Logic ---
 high_3d = df['high'].max()
 low_3d = df['low'].min()
 equilibrium = (high_3d + low_3d) / 2
 ote_deep = low_3d + (high_3d - low_3d) * 0.79
 ote_shallow = low_3d + (high_3d - low_3d) * 0.62
-
-# FVG እና OB Detection (ልክ እንደበፊቱ)
-def get_fvgs(df):
-    fvgs = []
-    for i in range(2, len(df)):
-        if df.iloc[i-2]['high'] < df.iloc[i]['low']:
-            fvgs.append({'type': 'Bullish', 'top': df.iloc[i]['low'], 'bottom': df.iloc[i-2]['high']})
-        elif df.iloc[i-2]['low'] > df.iloc[i]['high']:
-            fvgs.append({'type': 'Bearish', 'top': df.iloc[i-2]['low'], 'bottom': df.iloc[i]['high']})
-    return fvgs
 
 def get_obs(df):
     obs = []
@@ -58,39 +56,24 @@ def get_obs(df):
             obs.append({'type': 'Bearish', 'level': df.iloc[i]['low'], 'high': df.iloc[i]['high']})
     return obs
 
-current_fvgs = get_fvgs(df)
 current_obs = get_obs(df)
 curr_price = df.iloc[-1]['close']
 
-# Market Phase ስሌት
-last_change = ((df['close'].iloc[-1] - df['close'].iloc[-5]) / df['close'].iloc[-5]) * 100
-if abs(last_change) < 0.05: phase = "Consolidation 🛡️"
-elif last_change > 0: phase = "Expansion (Bullish) 🚀"
-else: phase = "Expansion (Bearish) 📉"
-
-# --- 5. ሲግናል መላኪያ (OB ወይም FVG ሲነካ ብቻ) ---
+# --- 6. ሲግናል መላኪያ ---
 entry_triggered = False
 msg_content = ""
 
 for ob in current_obs[-1:]:
-    if abs(curr_price - ob['level']) / ob['level'] < 0.0003: # ለ Spot ይበልጥ ጥብቅ የተደረገ
+    if abs(curr_price - ob['level']) / ob['level'] < 0.0003:
         entry_triggered = True
         sl = ob['low'] if ob['type'] == 'Bullish' else ob['high']
         tp = curr_price + (curr_price - sl) * 2 if ob['type'] == 'Bullish' else curr_price - (sl - curr_price) * 2
-        msg_content = f"🎯 Gold Spot {ob['type']} (OB):\nEntry: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
-
-if not entry_triggered:
-    for fvg in current_fvgs[-1:]:
-        if fvg['bottom'] <= curr_price <= fvg['top']:
-            entry_triggered = True
-            sl = fvg['bottom'] if fvg['type'] == 'Bullish' else fvg['top']
-            tp = curr_price + (curr_price - sl) * 2 if fvg['type'] == 'Bullish' else curr_price - (sl - curr_price) * 2
-            msg_content = f"🎯 Gold Spot {fvg['type']} (FVG):\nEntry: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
+        msg_content = f"🎯 Gold Entry ({ob['type']}):\nPrice: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
 
 if entry_triggered:
     send_telegram_msg(msg_content)
 
-# --- 6. ቻርቱን መስራት ---
+# --- 7. ቻርቱን መስራት ---
 fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="XAU/USD")])
 fig.add_hline(y=equilibrium, line_dash="dot", line_color="yellow", annotation_text="Equilibrium")
 fig.add_hrect(y0=ote_shallow, y1=ote_deep, fillcolor="gold", opacity=0.1, line_width=0, annotation_text="OTE Zone")
@@ -101,20 +84,16 @@ for ob in current_obs[-3:]:
 
 fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False)
 
-# --- 7. UI ማሳያ ---
+# --- 8. UI ማሳያ ---
 c1, c2 = st.columns([3, 1])
 with c1: st.plotly_chart(fig, use_container_width=True)
 with c2:
     st.subheader("Market Status")
-    st.write(f"Phase: **{phase}**")
     if st.button("📢 ቴሌግራምን ሞክር"):
-        send_telegram_msg("🚀 ቦቱ አሁን ከ Gold Spot (XAU/USD) ጋር ተገናኝቷል!")
-    
+        send_telegram_msg("🚀 ቦቱ አሁን በትክክል እየሰራ ነው።")
     st.metric("XAU/USD Price", f"{curr_price:,.2f}")
     st.divider()
     if entry_triggered:
         st.success("🔥 ENTRY DETECTED!")
-        st.write(msg_content)
     else:
-        st.info("Scanning OB/FVG...")
-    st.write(f"🕒 Sync: {datetime.now().strftime('%H:%M:%S')}")
+        st.info("Scanning Market...")
