@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 import requests
+from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
 # --- 1. የቴሌግራም መረጃ ---
@@ -15,62 +16,65 @@ def send_telegram_msg(message):
     except: pass
 
 # --- 2. ገጽታ ---
-st.set_page_config(page_title="Gold Sync Pro", layout="wide")
+st.set_page_config(page_title="Gold Master Sync", layout="wide")
 st_autorefresh(interval=30000, key="live_update")
 
-st.title("🏹 ICT Gold Spot (XAU/USD) - Stable Sync")
+st.title("🏹 ICT Gold Spot (XAU/USD) - Precise Feed")
 
-# --- 3. አስተማማኝ ዳታ አወራረድ (Stable Feed) ---
-def load_stable_data():
-    # GC=F በጣም አስተማማኝ እና የማይቆራረጥ ዳታ ምንጭ ነው
+# --- 3. ዳታ አወራረድ (ከ TradingView ጋር የተቀራረበ) ---
+@st.cache_data(ttl=30)
+def load_gold_data():
+    # GC=F (Futures) ዳታ በጣም ፈጣን እና አስተማማኝ ነው
     d = yf.download("GC=F", period="2d", interval="5m")
-    if d.empty:
-        return d, 0
-    
-    # በ TradingView (Spot) እና በዚህ (Futures) መካከል ያለውን ልዩነት በራሱ ያሰላል
-    # አሁን ባለው የገበያ ሁኔታ ልዩነቱ -11.60 አካባቢ ነው
-    return d, -11.60
+    # በምስልህ ላይ ባየሁት መሰረት ልዩነቱን ወደ -11.85 አድርጌዋለሁ
+    return d, -11.85
 
-data, offset = load_stable_data()
+data, offset = load_gold_data()
 
 if data.empty:
-    st.error("ዳታ መጫን አልተቻለም። እባክህ ኢንተርኔትህን አረጋግጠህ ድጋሚ ሞክር።")
+    st.error("ዳታ አልተገኘም። እባክህ ገጹን Refresh አድርገው።")
     st.stop()
 
 df = data.reset_index()
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
-# ዋጋውን ከ TradingView ጋር ማመሳሰል
+# ዋጋ ማስተካከያ
 for col in ['open', 'high', 'low', 'close']:
     df[col] += offset
 
-# --- 4. ICT Advanced Logic (ያልተቀነሰ) ---
+curr_price = df.iloc[-1]['close']
+
+# --- 4. ICT Logic (OTE & OB) ---
 high_p = df['high'].max()
 low_p = df['low'].min()
 equilibrium = (high_p + low_p) / 2
 ote_deep = low_p + (high_p - low_p) * 0.79
 ote_shallow = low_p + (high_p - low_p) * 0.62
 
-def get_obs(df):
-    obs = []
-    for i in range(1, len(df)-1):
+def find_latest_ob(df):
+    for i in range(len(df)-2, len(df)-15, -1):
+        # Bullish OB
         if df.iloc[i+1]['close'] > df.iloc[i]['high'] and df.iloc[i]['close'] < df.iloc[i]['open']:
-            obs.append({'type': 'Bullish', 'level': df.iloc[i]['high'], 'low': df.iloc[i]['low']})
-        elif df.iloc[i+1]['close'] < df.iloc[i]['low'] and df.iloc[i]['close'] > df.iloc[i]['open']:
-            obs.append({'type': 'Bearish', 'level': df.iloc[i]['low'], 'high': df.iloc[i]['high']})
-    return obs
+            return {'type': 'Bullish', 'level': df.iloc[i]['high'], 'sl': df.iloc[i]['low']}
+        # Bearish OB
+        if df.iloc[i+1]['close'] < df.iloc[i]['low'] and df.iloc[i]['close'] > df.iloc[i]['open']:
+            return {'type': 'Bearish', 'level': df.iloc[i]['low'], 'sl': df.iloc[i]['high']}
+    return None
 
-current_obs = get_obs(df)
-curr_price = df.iloc[-1]['close']
+ob = find_latest_ob(df)
 
-# --- 5. ሲግናል እና ቴሌግራም ---
-if len(current_obs) > 0:
-    ob = current_obs[-1]
-    if abs(curr_price - ob['level']) / ob['level'] < 0.0003:
-        sl = ob['low'] if ob['type'] == 'Bullish' else ob['high']
-        tp = curr_price + (curr_price - sl) * 2 if ob['type'] == 'Bullish' else curr_price - (sl - curr_price) * 2
-        msg = f"🎯 Gold Entry ({ob['type']}):\nPrice: {curr_price:,.2f}\nSL: {sl:,.2f}\nTP: {tp:,.2f}"
-        # ለመጀመሪያ ጊዜ ብቻ እንዲልክ (በየ 30 ሰከንዱ እንዳይረብሽ)
+# --- 5. ሲግናል መላኪያ ---
+if ob:
+    # ዋጋው ወደ OB ሲጠጋ (0.02% range)
+    if abs(curr_price - ob['level']) / ob['level'] < 0.0002:
+        tp_dist = abs(curr_price - ob['sl']) * 2
+        tp = curr_price + tp_dist if ob['type'] == 'Bullish' else curr_price - tp_dist
+        
+        msg = (f"🎯 **Gold {ob['type']} Entry**\n"
+               f"Price: {curr_price:,.2f}\n"
+               f"SL: {ob['sl']:,.2f}\n"
+               f"TP: {tp:,.2f}")
+        
         if 'last_alert' not in st.session_state or st.session_state.last_alert != ob['level']:
             send_telegram_msg(msg)
             st.session_state.last_alert = ob['level']
@@ -80,17 +84,17 @@ fig = go.Figure(data=[go.Candlestick(x=df.iloc[:,0], open=df['open'], high=df['h
 fig.add_hline(y=equilibrium, line_dash="dot", line_color="yellow", annotation_text="Equilibrium")
 fig.add_hrect(y0=ote_shallow, y1=ote_deep, fillcolor="gold", opacity=0.1, line_width=0, annotation_text="OTE Zone")
 
-for ob in current_obs[-3:]:
-    fig.add_hline(y=ob['level'], line_color="cyan", opacity=0.4)
+if ob:
+    fig.add_hline(y=ob['level'], line_color="cyan", annotation_text=f"Last {ob['type']} OB")
 
-fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False, margin=dict(l=10, r=10, t=10, b=10))
+fig.update_layout(template="plotly_dark", height=600, xaxis_rangeslider_visible=False)
 
 c1, c2 = st.columns([3, 1])
 with c1: st.plotly_chart(fig, use_container_width=True)
 with c2:
-    st.subheader("Market Status")
-    st.metric("XAU/USD (Synced)", f"{curr_price:,.2f}")
-    if st.button("📢 ቴሌግራምን ሞክር"):
-        send_telegram_msg(f"✅ ቦቱ አሁን በትክክል እየሰራ ነው። ዋጋ: {curr_price:,.2f}")
+    st.subheader("Market Sync")
+    st.metric("XAU/USD Live", f"{curr_price:,.2f}")
+    if st.button("📢 ቴሌግራም ሞክር"):
+        send_telegram_msg(f"✅ ቦቱ በትክክል ተመሳስሏል! ዋጋ: {curr_price:,.2f}")
     st.divider()
-    st.info("Scanning Market for ICT Setups...")
+    st.write(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
