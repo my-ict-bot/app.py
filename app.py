@@ -25,7 +25,7 @@ st.title("🏹 ICT Gold Spot (XAU/USD) - Precise Feed")
 @st.cache_data(ttl=30)
 def load_gold_data():
     # GC=F (Futures) ዳታ በጣም ፈጣን እና አስተማማኝ ነው
-    d = yf.download("GC=F", period="2d", interval="5m")
+    d = yf.download("GC=F", period="1d", interval="5m", prepost=True)
     # በምስልህ ላይ ባየሁት መሰረት ልዩነቱን ወደ -11.85 አድርጌዋለሁ
     return d, -11.85
 
