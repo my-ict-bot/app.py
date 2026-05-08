@@ -27,7 +27,7 @@ def load_gold_data():
     # GC=F (Futures) ዳታ በጣም ፈጣን እና አስተማማኝ ነው
     d = yf.download("GC=F", period="5d", interval="5m", prepost=True)
     # በምስልህ ላይ ባየሁት መሰረት ልዩነቱን ወደ -11.85 አድርጌዋለሁ
-    return d, -11.85
+    return d, -12.50
 
 data, offset = load_gold_data()
 
@@ -36,6 +36,7 @@ if data.empty:
     st.stop()
 
 df = data.reset_index()
+df.iloc[:, 0] = df.iloc[:, 0] + pd.Timedelta(hours=3)
 df.columns = [c[0].lower() if isinstance(c, tuple) else c.lower() for c in df.columns]
 
 # ዋጋ ማስተካከያ
