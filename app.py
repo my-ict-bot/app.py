@@ -1,47 +1,38 @@
+import streamlit as st
 import pandas as pd
 import requests
-import time
 from datetime import datetime
 import pytz
 
-# --- የእንተ መረጃዎች ---
+# ገጹን ማስተካከል
+st.set_page_config(page_title="Central Bank AI Predictor", layout="wide")
+
 API_KEY = '3f0123e009b84cf9b0c8be149407fd0e'
 SYMBOL = 'XAU/USD'
-INTERVAL = '1min' # ለ ICT ፈጣን ዳታ አስፈላጊ ነው
 
-def get_realtime_gold_data():
-    url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval={INTERVAL}&apikey={API_KEY}&outputsize=1"
-    
+def get_data():
+    url = f"https://api.twelvedata.com/time_series?symbol={SYMBOL}&interval=1min&apikey={API_KEY}&outputsize=1"
     try:
-        response = requests.get(url).json()
-        
-        if 'values' in response:
-            latest_data = response['values'][0]
-            price = float(latest_data['close'])
-            server_time = latest_data['datetime']
-            
-            # ሰዓቱን ወደ አንተ አገር ሰዓት (Ethiopia) መቀየር
-            et_tz = pytz.timezone('Africa/Addis_Ababa')
-            now = datetime.now(et_tz)
-            current_time = now.strftime("%H:%M:%S")
-            
-            print(f"--- GOLD (XAU/USD) LIVE ---")
-            print(f"ትክክለኛ ዋጋ: ${price:,.2f}")
-            print(f"የአሁኑ ሰዓት (አዲስ አበባ): {current_time}")
-            print(f"ከ TradingView ጋር ያለ ልዩነት: 0.00")
-            print("-" * 25)
-            
-            return price
-        else:
-            print("ዳታ ማምጣት አልተቻለም። API Key ወይም Symbol ያረጋግጡ።")
-            return None
-            
-    except Exception as e:
-        print(f"ስህተት ተፈጥሯል: {e}")
+        res = requests.get(url).json()
+        if 'values' in res:
+            return float(res['values'][0]['close'])
+        return None
+    except:
         return None
 
-# ቦቱን ስራ ማስጀመር
-print("ቦቱ ስራ ጀምሯል... (በየ 60 ሰከንዱ ይታደሳል)")
-while True:
-    get_realtime_gold_data()
-    time.sleep(60)
+# ዌብሳይቱ ላይ የሚታይ ጽሁፍ
+st.title("🏛 Central Bank Price Action Analysis (AI)")
+
+gold_price = get_data()
+
+if gold_price:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("XAU/USD (Gold) Price", f"${gold_price:,.2f}")
+    with col2:
+        et_tz = pytz.timezone('Africa/Addis_Ababa')
+        st.metric("Current Time (ET)", datetime.now(et_tz).strftime("%H:%M:%S"))
+    
+    st.success("ዳታው በትክክል እየመጣ ነው!")
+else:
+    st.error("ዳታውን ማግኘት አልተቻለም። እባክህ API Key ወይም ኢንተርኔትህን ፈትሽ።")
