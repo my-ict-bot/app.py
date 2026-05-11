@@ -6,29 +6,31 @@ from datetime import datetime
 import pytz
 import time
 
-# 1. Configuration (የአንተ መረጃዎች)
+# 1. Configuration (የአንተ መረጃዎች ሳይነኩ ተቀምጠዋል)
 API_KEY = '3f0123e009b84cf9b0c8be149407fd0e'
 TELEGRAM_TOKEN = '8714391964:AAFSzs1jZyhP6Spx8C2oDeIJ-NJnwtPrx9c'
 CHAT_ID = '8125084772'
 
 st.set_page_config(page_title="Central Bank AI Predictor", layout="wide")
 
-# 2. Sidebar
+# 2. Sidebar - አደራደር
 st.sidebar.title("Settings & Links")
-# Twelve Data ለወርቅ XAU/USD ነው የሚጠቀመው
-asset_choice = st.sidebar.selectbox("Asset ምርጫ", ["XAU/USD", "BTC/USD"])
+asset_choice = st.sidebar.selectbox("Asset ምርጫ", ["BTC/USD", "XAU/USD"])
 timeframe = st.sidebar.selectbox("የሰዓት ምርጫ (Timeframe)", ["1min", "5min", "15min", "1h"])
 
 st.sidebar.markdown("---")
-st.sidebar.info("📢 Telegram Bot Connected")
+st.sidebar.success("📢 Telegram Bot Connected")
 
-# 3. Telegram Function
+# 3. Telegram Message Function
 def send_telegram_signal(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={CHAT_ID}&text={message}&parse_mode=Markdown"
-    try: requests.get(url)
-    except: pass
+    try:
+        requests.get(url)
+    except:
+        pass
 
-# 4. Data Fetching (ለ XAU/USD እና BTC/USD)
+# 4. Data Fetching (የተረጋጋ ዳታ ማምጫ)
+@st.cache_data(ttl=30) # ዳታውን ለ 30 ሰከንድ በذاكرة (Cache) ይይዘዋል
 def get_market_data(symbol, tf):
     url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval={tf}&apikey={API_KEY}&outputsize=50"
     try:
@@ -43,20 +45,20 @@ def get_market_data(symbol, tf):
     except:
         return None
 
-# 5. ICT Logic (FVG Detection)
-def check_ict_signals(df, symbol):
-    if len(df) < 5: return
+# 5. ICT AI Strategy (FVG Detection)
+def check_signals(df, symbol):
+    if df is None or len(df) < 5: return
     last = df.iloc[-1]
     third = df.iloc[-3]
     price = last['close']
     
-    # Simple Bullish FVG check
+    # Bullish FVG
     if last['low'] > third['high']:
-        msg = f"🚀 *ICT BULLISH SIGNAL*\nAsset: {symbol}\nPrice: ${price:,.2f}\nEntry: {price}\nSL: {last['low']-5}\nTP: {price+15}"
+        msg = f"🚀 *ICT BULLISH SIGNAL*\n\nAsset: {symbol}\nPrice: ${price:,.2f}\nEntry: {price}\nSL: {last['low']-10}\nTP: {price+30}"
         send_telegram_signal(msg)
-        st.toast("Signal Sent!")
+        st.toast("Signal Sent to Telegram!")
 
-# 6. UI
+# 6. Main Dashboard
 st.title("🏛 Central Bank Price Action Analysis (AI)")
 
 df = get_market_data(asset_choice, timeframe)
@@ -70,7 +72,7 @@ if df is not None:
         et_tz = pytz.timezone('Africa/Addis_Ababa')
         st.metric("Ethiopia Time", datetime.now(et_tz).strftime("%H:%M:%S"))
 
-    # Candlestick Chart
+    # Professional Candlestick Chart
     fig = go.Figure(data=[go.Candlestick(x=df['datetime'],
                 open=df['open'], high=df['high'],
                 low=df['low'], close=df['close'],
@@ -78,11 +80,11 @@ if df is not None:
     fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=500)
     st.plotly_chart(fig, use_container_width=True)
     
-    check_ict_signals(df, asset_choice)
-    st.success("ዳታው በትክክል እየመጣ ነው። ቦቱ ሲግናል እየፈለገ ነው...")
+    check_signals(df, asset_choice)
+    st.success("ዳታው በትክክል እየመጣ ነው። ቦቱ ገበያውን እየመረመረ ነው...")
 else:
-    st.error("ዳታው አልመጣም። እባክህ ለ 30 ሰከንድ ጠብቅ (API Limit)...")
+    st.warning("ዳታው ለጊዜው አልተገኘም። እባክህ ለ 30 ሰከንድ ጠብቅ (API Limit)...")
 
-# 7. Auto Refresh
-time.sleep(20) # APIው እንዳይዘጋ 20 ሰከንድ መጠበቅ ይመከራል
+# 7. Auto-Refresh (በየ 30 ሰከንዱ)
+time.sleep(30)
 st.rerun()
